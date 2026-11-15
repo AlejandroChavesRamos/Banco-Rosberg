@@ -1,0 +1,21 @@
+# Secretos: NUNCA subir el .env real
+.env
+
+# Guia personal de trabajo
+GUIA.md
+
+# Python
+__pycache__/
+*.pyc
+.venv/
+venv/
+
+# Node
+node_modules/
+dist/
+
+# Editores / SO
+.vscode/
+.idea/
+Thumbs.db
+.DS_Store

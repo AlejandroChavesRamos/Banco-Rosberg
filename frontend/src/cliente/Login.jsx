@@ -1,0 +1,60 @@
+// Pantalla de inicio de sesion de la App Rosberg
+import { useState } from 'react'
+import { Link, Navigate, useNavigate } from 'react-router-dom'
+import { Aviso, Boton, Campo, Logo, PantallaCargando } from '../componentes/ui'
+import { useSesion } from '../sesion'
+import MarcoPublico from './MarcoPublico'
+
+export default function Login() {
+  const { usuario, cargando, iniciarSesion } = useSesion()
+  const navegar = useNavigate()
+  // useState guarda datos que cambian; al cambiarlos, React vuelve a dibujar
+  const [email, setEmail] = useState('')
+  const [password, setPassword] = useState('')
+  const [error, setError] = useState('')
+  const [enviando, setEnviando] = useState(false)
+
+  if (cargando) return <PantallaCargando />
+  if (usuario) return <Navigate to="/app" replace />
+
+  async function entrar(evento) {
+    evento.preventDefault() // evita que el navegador recargue la pagina
+    setError('')
+    setEnviando(true)
+    try {
+      const r = await iniciarSesion(email, password)
+      navegar(r.debe_cambiar_password ? '/app/cambiar-clave' : '/app')
+    } catch (e) {
+      setError(e.message)
+    } finally {
+      setEnviando(false)
+    }
+  }
+
+  return (
+    <MarcoPublico>
+      <div className="mb-8 lg:hidden">
+        <Logo subtitulo="Banco Rosberg" />
+      </div>
+      <h1 className="text-3xl font-bold tracking-tight">Hola de nuevo</h1>
+      <p className="mb-8 mt-1 text-slate-500 dark:text-slate-400">Ingresa a tu banca en línea.</p>
+
+      <form onSubmit={entrar} className="space-y-5">
+        <Campo etiqueta="Correo" type="email" required autoComplete="username"
+               value={email} onChange={(e) => setEmail(e.target.value)} />
+        <Campo etiqueta="Contraseña" type="password" required autoComplete="current-password"
+               value={password} onChange={(e) => setPassword(e.target.value)} />
+        <Aviso>{error}</Aviso>
+        <Boton type="submit" cargando={enviando} className="w-full py-3">Ingresar</Boton>
+      </form>
+
+      <p className="mt-8 text-sm text-slate-500">
+        ¿No tienes cuenta?{' '}
+        <Link to="/app/registro" className="font-semibold text-marca-600 dark:text-marca-400">Ábrela en minutos</Link>
+      </p>
+      <p className="mt-12 text-xs text-slate-400">
+        ¿Eres empleado? Usa la <Link to="/intranet" className="underline">Intranet Rosberg</Link>
+      </p>
+    </MarcoPublico>
+  )
+}

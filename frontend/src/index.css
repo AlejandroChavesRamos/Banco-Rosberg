@@ -1,0 +1,12 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+body {
+  @apply bg-slate-50 text-slate-900 antialiased dark:bg-slate-950 dark:text-slate-100;
+}
+
+/* Los numeros (saldos, montos) con ancho fijo para que se alineen */
+.cifras {
+  font-variant-numeric: tabular-nums;
+}
