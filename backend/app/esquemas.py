@@ -34,6 +34,17 @@ class RegistroEntrada(BaseModel):
         return validar_politica(v)
 
 
+# ------------------------------ Publico --------------------------------
+class SolicitudPublica(BaseModel):
+    email: EmailStr
+    tipo: Literal["tarjeta", "contacto", "empleo"]
+    mensaje: str | None = Field(default=None, max_length=500)
+
+
+class EstadoSolicitud(BaseModel):
+    atendida: bool
+
+
 Portal = Literal["app", "intranet"]
 
 
@@ -77,6 +88,19 @@ class CambioConfiguracion(BaseModel):
 
 class CambioPassword(BaseModel):
     actual: str = Field(max_length=128)
+    nueva: str
+
+    @field_validator("nueva")
+    @classmethod
+    def _politica(cls, v: str) -> str:
+        return validar_politica(v)
+
+
+class RecuperarPassword(BaseModel):
+    """El cliente demuestra quien es con los datos que dio al abrir la cuenta."""
+    email: EmailStr
+    cedula: Cedula
+    celular: Celular
     nueva: str
 
     @field_validator("nueva")

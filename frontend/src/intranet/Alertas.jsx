@@ -8,7 +8,7 @@
 import { useEffect, useRef, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { api } from '../api'
-import { Aviso, Boton, Insignia, Tarjeta } from '../componentes/ui'
+import { Aviso, Boton, Insignia, Tarjeta, EstadoVacio } from '../componentes/ui'
 import { usePeriodico } from '../componentes/usePeriodico'
 import { ESTADOS, cop, enmascarar, fechaHora } from '../formato'
 import GrafoCuenta from './GrafoCuenta'
@@ -91,7 +91,7 @@ export default function Alertas() {
     <div className="space-y-5">
       <div className="flex flex-wrap items-end justify-between gap-3">
         <div>
-          <h1 className="text-2xl font-bold tracking-tight">Alertas de fraude</h1>
+          <h1 className="text-3xl font-bold tracking-tight text-marca-700">Alertas de fraude</h1>
           <p className="text-sm text-slate-500">
             {vista === 'pendientes' ? 'Ordenadas por riesgo. Se actualizan solas cada 5 segundos.' : 'Decisiones ya tomadas.'}
           </p>
@@ -116,17 +116,17 @@ export default function Alertas() {
       <div className="grid gap-5 xl:grid-cols-[380px_1fr]">
         {/* Lista */}
         <Tarjeta className="max-h-[calc(100vh-200px)] overflow-y-auto p-0">
-          <div className="sticky top-0 border-b border-slate-100 bg-white px-4 py-3 text-sm font-semibold dark:border-slate-800 dark:bg-slate-900">
+          <div className="sticky top-0 border-b border-slate-100 bg-white px-4 py-3 text-sm font-semibold">
             {alertas.length} {vista}
           </div>
-          <ul className="divide-y divide-slate-100 dark:divide-slate-800">
+          <ul className="divide-y divide-slate-100">
             {alertas.map((a) => (
               <li key={a.alerta_id}>
                 <button
                   onClick={() => setSeleccionada(a)}
-                  className={`w-full px-4 py-3 text-left transition hover:bg-slate-50 dark:hover:bg-slate-800/60 ${
-                    seleccionada?.alerta_id === a.alerta_id ? 'bg-marca-50 dark:bg-marca-950/50' : ''
-                  } ${nuevas.has(a.alerta_id) ? 'animate-pulse bg-red-50 dark:bg-red-950/40' : ''}`}
+                  className={`w-full px-4 py-3 text-left transition hover:bg-slate-50 ${
+                    seleccionada?.alerta_id === a.alerta_id ? 'bg-marca-50' : ''
+                  } ${nuevas.has(a.alerta_id) ? 'animate-pulse bg-red-50' : ''}`}
                 >
                   <div className="flex items-center gap-3">
                     <span className={`grid h-9 w-9 shrink-0 place-items-center rounded-lg text-xs font-bold text-white ${colorPuntaje(a.puntaje)}`}>
@@ -143,7 +143,13 @@ export default function Alertas() {
                 </button>
               </li>
             ))}
-            {alertas.length === 0 && <li className="p-6 text-center text-sm text-slate-500">No hay alertas {vista}.</li>}
+            {alertas.length === 0 && (
+              <li>
+                <EstadoVacio icono="escudo" titulo={`No hay alertas ${vista}`}>
+                  El motor antifraude crea una alerta cuando retiene o bloquea una operación.
+                </EstadoVacio>
+              </li>
+            )}
           </ul>
         </Tarjeta>
 
@@ -204,14 +210,14 @@ function Detalle({ alerta, onCambio }) {
           <div className="text-right">
             <div className="text-xs text-slate-500">Puntaje de riesgo</div>
             <div className="text-3xl font-bold">{alerta.puntaje}<span className="text-base text-slate-400">/100</span></div>
-            <div className="mt-1 h-2 w-40 overflow-hidden rounded-full bg-slate-200 dark:bg-slate-800">
+            <div className="mt-1 h-2 w-40 overflow-hidden rounded-full bg-slate-200">
               <div className={`h-full ${colorPuntaje(alerta.puntaje)}`} style={{ width: `${alerta.puntaje}%` }} />
             </div>
           </div>
         </div>
 
         {alerta.transaccion_id && (
-          <div className="flex flex-wrap items-center gap-3 rounded-xl bg-slate-50 px-4 py-3 text-sm dark:bg-slate-800/60">
+          <div className="flex flex-wrap items-center gap-3 rounded-xl bg-slate-50 px-4 py-3 text-sm">
             <span className="capitalize">{alerta.tipo} #{alerta.transaccion_id}</span>
             <span className="cifras font-semibold">{cop(alerta.monto)}</span>
             {estadoTx && <Insignia color={estadoTx.color}>{estadoTx.texto}</Insignia>}
@@ -222,8 +228,8 @@ function Detalle({ alerta, onCambio }) {
           <h3 className="mb-2 text-sm font-semibold">¿Por qué se generó?</h3>
           <ul className="space-y-2">
             {alerta.motivos.map((m, i) => (
-              <li key={i} className="flex gap-3 rounded-xl border border-slate-200 px-3 py-2 dark:border-slate-800">
-                <span className="cifras shrink-0 rounded-md bg-red-50 px-2 py-0.5 text-xs font-bold text-red-700 dark:bg-red-950 dark:text-red-300">
+              <li key={i} className="flex gap-3 rounded-xl border border-slate-200 px-3 py-2">
+                <span className="cifras shrink-0 rounded-md bg-red-50 px-2 py-0.5 text-xs font-bold text-red-700">
                   +{m.peso}
                 </span>
                 <div className="text-sm">
@@ -239,7 +245,7 @@ function Detalle({ alerta, onCambio }) {
         </div>
 
         {resuelta && (
-          <div className="rounded-xl bg-slate-50 px-4 py-3 text-sm dark:bg-slate-800/60">
+          <div className="rounded-xl bg-slate-50 px-4 py-3 text-sm">
             <div>
               <strong>{alerta.estado === 'confirmada' ? 'Fraude confirmado' : 'Descartada (falsa alarma)'}</strong> por{' '}
               {alerta.analista ?? '—'} el {fechaHora(alerta.resuelta_en)}
@@ -265,13 +271,13 @@ function Detalle({ alerta, onCambio }) {
           </div>
         ) : (
           // Confirmacion: repite el NOMBRE y la cuenta para evitar equivocarse de alerta
-          <div className="space-y-3 rounded-xl border-2 border-dashed border-slate-300 p-4 dark:border-slate-700">
+          <div className="space-y-3 rounded-xl border-2 border-dashed border-slate-300 p-4">
             <div className="text-sm">
               Alerta <strong>#{alerta.alerta_id}</strong> de <strong>{alerta.titular}</strong> (cuenta {enmascarar(alerta.cuenta)}).
               <div className="text-slate-500">{textos[accion].aviso}.</div>
             </div>
             <textarea
-              className="w-full rounded-xl border-0 bg-white px-3 py-2 text-sm ring-1 ring-slate-200 focus:outline-none focus:ring-2 focus:ring-marca-500 dark:bg-slate-900 dark:ring-slate-700"
+              className="w-full rounded-xl border-0 bg-white px-3 py-2 text-sm ring-1 ring-slate-200 focus:outline-none focus:ring-2 focus:ring-marca-500"
               rows={2}
               placeholder={accion === 'reabrir' ? 'Motivo de la reapertura (obligatorio)' : 'Nota para la auditoría'}
               value={nota}

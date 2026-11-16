@@ -19,3 +19,6 @@ dist/
 .idea/
 Thumbs.db
 .DS_Store
+
+# Usuarios y contrasenas de prueba (solo local)
+USUARIOS-PRUEBA.md

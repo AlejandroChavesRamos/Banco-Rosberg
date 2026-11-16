@@ -1,7 +1,8 @@
 // Mis llaves: registrar el celular o el correo para recibir transferencias
 import { useEffect, useState } from 'react'
 import { api } from '../api'
-import { Aviso, Boton, Selector, Tarjeta } from '../componentes/ui'
+import Icono from '../componentes/Icono'
+import { Aviso, Boton, Selector, Tarjeta, EstadoVacio } from '../componentes/ui'
 import { enmascarar, fechaHora } from '../formato'
 
 export default function Llaves() {
@@ -53,7 +54,7 @@ export default function Llaves() {
   return (
     <div className="space-y-6">
       <div>
-        <h1 className="text-2xl font-bold tracking-tight">Mis llaves</h1>
+        <h1 className="text-3xl font-bold tracking-tight text-marca-700">Mis llaves</h1>
         <p className="text-sm text-slate-500">Recibe dinero sin compartir tu número de cuenta.</p>
       </div>
 
@@ -61,13 +62,15 @@ export default function Llaves() {
       <div className="grid items-start gap-6 lg:grid-cols-2">
       <Tarjeta className="p-0">
         {llaves.length === 0 ? (
-          <p className="p-5 text-sm text-slate-500">Aún no tienes llaves registradas.</p>
+          <EstadoVacio icono="llave" titulo="Aún no tienes llaves">
+            Registra tu celular o tu correo para que te envíen dinero sin pedirte el número de cuenta.
+          </EstadoVacio>
         ) : (
-          <ul className="divide-y divide-slate-100 dark:divide-slate-800">
+          <ul className="divide-y divide-slate-100">
             {llaves.map((l) => (
               <li key={l.id} className="flex items-center gap-3 px-5 py-4">
-                <span className="grid h-9 w-9 place-items-center rounded-full bg-marca-50 text-marca-700 dark:bg-marca-950 dark:text-marca-300">
-                  {l.tipo === 'celular' ? '☏' : '@'}
+                <span className="grid h-9 w-9 place-items-center rounded-full bg-marca-50 text-marca-700">
+                  <Icono nombre={l.tipo === 'celular' ? 'telefono' : 'arroba'} className="h-4 w-4" />
                 </span>
                 <div className="min-w-0 flex-1">
                   <div className="truncate text-sm font-medium">{l.valor}</div>
@@ -85,7 +88,7 @@ export default function Llaves() {
       </Tarjeta>
 
       <Tarjeta>
-        <h2 className="mb-4 font-semibold">Registrar una llave</h2>
+        <h2 className="mb-4 text-lg font-semibold text-marca-700">Registrar una llave</h2>
         <form onSubmit={registrar} className="space-y-4">
           <Selector
             etiqueta="Tipo de llave"

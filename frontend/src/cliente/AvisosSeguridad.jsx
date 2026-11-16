@@ -35,11 +35,11 @@ export default function AvisosSeguridad() {
   return (
     <div className="mb-6 space-y-3">
       {avisos.map((a) => (
-        <div key={a.id} className="flex flex-wrap items-center gap-4 rounded-2xl border border-amber-300 bg-amber-50 px-5 py-4 dark:border-amber-800 dark:bg-amber-950/60">
+        <div key={a.id} className="flex flex-wrap items-center gap-4 rounded-2xl border border-amber-300 bg-amber-50 px-5 py-4">
           <span className="text-2xl">⚠</span>
           <div className="min-w-0 flex-1">
-            <div className="font-semibold text-amber-900 dark:text-amber-200">¿Fuiste tú? Nuevo inicio de sesión</div>
-            <div className="text-sm text-amber-800 dark:text-amber-300">{a.motivo} · {fechaHora(a.creado_en)}</div>
+            <div className="font-semibold text-amber-900">¿Fuiste tú? Nuevo inicio de sesión</div>
+            <div className="text-sm text-amber-800">{a.motivo} · {fechaHora(a.creado_en)}</div>
           </div>
           <div className="flex gap-2">
             <Boton variante="secundario" cargando={ocupado === a.id} onClick={() => responder(a, true)}>Sí, fui yo</Boton>

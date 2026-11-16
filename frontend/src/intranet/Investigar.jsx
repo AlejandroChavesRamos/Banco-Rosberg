@@ -42,7 +42,7 @@ export default function Investigar() {
     <div className="space-y-5">
       <div className="flex flex-wrap items-end justify-between gap-3">
         <div>
-          <h1 className="text-2xl font-bold tracking-tight">Investigar cuenta</h1>
+          <h1 className="text-3xl font-bold tracking-tight text-marca-700">Investigar cuenta</h1>
           <p className="text-sm text-slate-500">Haz clic en cualquier cuenta del grafo para seguir el rastro del dinero.</p>
         </div>
         <form onSubmit={(e) => { e.preventDefault(); navegar(`/intranet/investigar/${busqueda.trim()}`) }}
@@ -76,7 +76,7 @@ export default function Investigar() {
             <Tarjeta className="space-y-3">
               <h3 className="text-sm font-semibold">{resumen.estado === 'congelada' ? 'Descongelar' : 'Congelar'} cuenta</h3>
               <textarea
-                className="w-full rounded-xl border-0 bg-white px-3 py-2 text-sm ring-1 ring-slate-200 focus:outline-none focus:ring-2 focus:ring-marca-500 dark:bg-slate-900 dark:ring-slate-700"
+                className="w-full rounded-xl border-0 bg-white px-3 py-2 text-sm ring-1 ring-slate-200 focus:outline-none focus:ring-2 focus:ring-marca-500"
                 rows={2} placeholder="Motivo (obligatorio)" value={motivo} onChange={(e) => setMotivo(e.target.value)}
               />
               <Aviso>{accion.error}</Aviso>

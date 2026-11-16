@@ -10,8 +10,9 @@ import { useEffect, useRef, useState } from 'react'
 import { Link, useLocation } from 'react-router-dom'
 import { api, nuevaClave } from '../api'
 import { CampoCodigo } from '../componentes/DosPasos'
+import Icono from '../componentes/Icono'
 import { Aviso, Boton, Campo, Selector, Tarjeta } from '../componentes/ui'
-import { cop, enmascarar } from '../formato'
+import { cop, enmascarar, fechaHora } from '../formato'
 
 export default function Transferir() {
   const ubicacion = useLocation()
@@ -97,13 +98,13 @@ export default function Transferir() {
   return (
     <div className="space-y-6">
       <div>
-        <h1 className="text-2xl font-bold tracking-tight">Enviar dinero</h1>
+        <h1 className="text-3xl font-bold tracking-tight text-marca-700">Enviar dinero</h1>
         <p className="text-sm text-slate-500">A cualquier cuenta de Banco Rosberg, con su número o su llave.</p>
       </div>
 
       <div className="grid gap-6 lg:grid-cols-[1fr_340px]">
         <div>
-          <Pasos actual={paso} />
+          <div className="no-imprimir"><Pasos actual={paso} /></div>
 
           {paso === 1 && (
             <Tarjeta>
@@ -137,7 +138,7 @@ export default function Transferir() {
                   <div className="cifras text-4xl font-bold tracking-tight">{cop(monto)}</div>
                   <p className="mt-1 text-sm text-slate-500">desde Ahorros {enmascarar(origen)}</p>
                 </div>
-                <div className="rounded-xl bg-slate-50 p-4 dark:bg-slate-800/60">
+                <div className="rounded-xl bg-slate-50 p-4">
                   <div className="text-xs text-slate-500">A</div>
                   <div className="text-lg font-semibold">{destinatario.titular}</div>
                   <div className="text-sm text-slate-500">Cuenta de {destinatario.tipo} {destinatario.cuenta}</div>
@@ -164,15 +165,15 @@ export default function Transferir() {
         </div>
 
         {/* Columna lateral de ayuda */}
-        <Tarjeta className="h-fit space-y-4 text-sm">
-          <h2 className="font-semibold">Envía seguro</h2>
-          <Consejo icono="⚿" titulo="Usa llaves">
+        <Tarjeta className="no-imprimir h-fit space-y-4 text-sm">
+          <h2 className="text-lg font-semibold text-marca-700">Envía seguro</h2>
+          <Consejo icono="llave" titulo="Usa llaves">
             Pide el celular o correo registrado del destinatario: no necesitas su número de cuenta.
           </Consejo>
-          <Consejo icono="👁" titulo="Revisa el nombre">
+          <Consejo icono="ojo" titulo="Revisa el nombre">
             Antes de confirmar te mostramos parte del nombre del titular. Si no coincide, no envíes.
           </Consejo>
-          <Consejo icono="⏸" titulo="Operaciones en revisión">
+          <Consejo icono="pausa" titulo="Operaciones en revisión">
             Si algo parece inusual, tu envío queda en revisión y el dinero no sale hasta que lo verifiquemos.
           </Consejo>
         </Tarjeta>
@@ -188,10 +189,10 @@ function Pasos({ actual }) {
       {nombres.map((n, i) => (
         <li key={n} className="flex items-center gap-2">
           <span className={`grid h-6 w-6 place-items-center rounded-full text-xs font-bold ${
-            i + 1 <= actual ? 'bg-marca-600 text-white' : 'bg-slate-200 text-slate-500 dark:bg-slate-800'
+            i + 1 <= actual ? 'bg-marca-600 text-white' : 'bg-slate-200 text-slate-500'
           }`}>{i + 1}</span>
           <span className={i + 1 === actual ? 'font-semibold' : 'text-slate-500'}>{n}</span>
-          {i < nombres.length - 1 && <span className="h-px w-8 bg-slate-300 dark:bg-slate-700" />}
+          {i < nombres.length - 1 && <span className="h-px w-8 bg-slate-300" />}
         </li>
       ))}
     </ol>
@@ -201,7 +202,7 @@ function Pasos({ actual }) {
 function Consejo({ icono, titulo, children }) {
   return (
     <div className="flex gap-3">
-      <span className="grid h-8 w-8 shrink-0 place-items-center rounded-lg bg-marca-50 text-marca-700 dark:bg-marca-950 dark:text-marca-300">{icono}</span>
+      <span className="grid h-8 w-8 shrink-0 place-items-center rounded-lg bg-marca-50 text-marca-700"><Icono nombre={icono} className="h-4 w-4" /></span>
       <div>
         <div className="font-medium">{titulo}</div>
         <div className="text-slate-500">{children}</div>
@@ -210,28 +211,56 @@ function Consejo({ icono, titulo, children }) {
   )
 }
 
-// Resultado segun lo que decidio el motor antifraude
+// Resultado segun lo que decidio el motor antifraude, con su comprobante
 function Resultado({ r, onOtra }) {
   const estilos = {
-    aprobada: { icono: '✓', titulo: '¡Listo!', color: 'bg-marca-100 text-marca-700 dark:bg-marca-950 dark:text-marca-300' },
-    retenida: { icono: '⏸', titulo: 'En revisión', color: 'bg-amber-100 text-amber-700 dark:bg-amber-950 dark:text-amber-300' },
-    bloqueada: { icono: '⛔', titulo: 'Operación bloqueada', color: 'bg-red-100 text-red-700 dark:bg-red-950 dark:text-red-300' },
+    aprobada: { icono: 'check', titulo: 'Transferencia exitosa', color: 'bg-marca-100 text-marca-700' },
+    retenida: { icono: 'pausa', titulo: 'En revisión', color: 'bg-amber-100 text-amber-800' },
+    bloqueada: { icono: 'bloqueo', titulo: 'Operación bloqueada', color: 'bg-red-100 text-red-700' },
   }
   const e = estilos[r.estado] ?? estilos.aprobada
   return (
-    <Tarjeta className="py-10 text-center">
-      <div className={`mx-auto mb-4 grid h-20 w-20 place-items-center rounded-full text-4xl ${e.color}`}>{e.icono}</div>
-      <h2 className="text-2xl font-bold">{e.titulo}</h2>
-      {r.monto && <div className="cifras mt-2 text-3xl font-bold">{cop(r.monto)}</div>}
-      {r.destinatario && <p className="mt-1 text-slate-500">para {r.destinatario}</p>}
-      <p className="mx-auto mt-4 max-w-sm text-sm text-slate-500">{r.mensaje}</p>
-      <p className="mt-2 text-xs text-slate-400">Comprobante #{r.transaccion_id}</p>
-      <div className="mt-8 flex justify-center gap-3">
+    <Tarjeta className="p-0">
+      <div className="px-6 pb-6 pt-10 text-center">
+        <div className={`confirmado mx-auto mb-4 grid h-20 w-20 place-items-center rounded-full ${e.color}`}>
+          <Icono nombre={e.icono} className="h-10 w-10" />
+        </div>
+        <h2 className="text-2xl font-bold text-marca-700">{e.titulo}</h2>
+        {r.monto && <div className="cifras mt-2 font-titulo text-4xl font-bold text-marca-900">{cop(r.monto)}</div>}
+        <p className="mx-auto mt-3 max-w-sm text-sm text-slate-500">{r.mensaje}</p>
+      </div>
+
+      {/* Comprobante. En una transferencia repetida (doble clic) el backend solo devuelve el numero. */}
+      <dl className="mx-6 divide-y divide-dashed divide-marca-200 border-y border-dashed border-marca-200 text-sm">
+        <Linea etiqueta="Comprobante">#{r.transaccion_id}</Linea>
+        {r.fecha && <Linea etiqueta="Fecha">{fechaHora(r.fecha)}</Linea>}
+        {r.cuenta_origen && <Linea etiqueta="Desde">Cuenta {r.cuenta_origen}</Linea>}
+        {r.destinatario && <Linea etiqueta="Para">{r.destinatario}</Linea>}
+        {r.cuenta_destino && <Linea etiqueta="Cuenta destino">{r.cuenta_destino}</Linea>}
+      </dl>
+      <p className="px-6 pt-4 text-center text-xs text-slate-400">
+        Banco Rosberg. Proyecto académico: este comprobante no tiene validez legal.
+      </p>
+
+      <div className="no-imprimir flex flex-wrap justify-center gap-3 p-6">
+        <Boton variante="secundario" onClick={() => window.print()}>
+          <Icono nombre="imprimir" className="h-4 w-4" />
+          Imprimir o guardar PDF
+        </Boton>
         <Boton onClick={onOtra}>Hacer otra transferencia</Boton>
-        <Link to="/app" className="rounded-xl px-4 py-2.5 text-sm font-semibold text-marca-600 hover:bg-marca-50 dark:hover:bg-marca-950">
+        <Link to="/app" className="boton-vivo rounded-xl px-4 py-2.5 text-sm font-semibold text-marca-700 hover:bg-marca-50">
           Volver al inicio
         </Link>
       </div>
     </Tarjeta>
+  )
+}
+
+function Linea({ etiqueta, children }) {
+  return (
+    <div className="flex justify-between gap-6 py-3">
+      <dt className="text-slate-500">{etiqueta}</dt>
+      <dd className="cifras text-right font-medium text-marca-900">{children}</dd>
+    </div>
   )
 }

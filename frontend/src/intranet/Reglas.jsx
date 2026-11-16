@@ -23,7 +23,7 @@ export default function Reglas() {
   return (
     <div className="max-w-5xl space-y-6">
       <div>
-        <h1 className="text-2xl font-bold tracking-tight">Reglas antifraude</h1>
+        <h1 className="text-3xl font-bold tracking-tight text-marca-700">Reglas antifraude</h1>
         <p className="text-sm text-slate-500">
           Cada regla que se cumple suma su peso al puntaje de la operación. Los cambios aplican de inmediato y quedan en la
           auditoría.
@@ -41,10 +41,10 @@ export default function Reglas() {
       <Interruptores configuracion={configuracion} onCambio={(texto, tipo = 'exito') => { setMensaje({ tipo, texto }); cargar() }} />
 
       <Tarjeta>
-        <h2 className="mb-3 font-semibold">Umbrales de decisión</h2>
+        <h2 className="mb-3 text-lg font-semibold text-marca-700">Umbrales de decisión</h2>
         <div className="grid gap-2 text-sm sm:grid-cols-2">
           {configuracion.filter((c) => !c.clave.startsWith('2FA') && c.clave !== 'MONTO_2FA').map((c) => (
-            <div key={c.clave} className="flex justify-between gap-4 border-b border-slate-100 py-1.5 dark:border-slate-800">
+            <div key={c.clave} className="flex justify-between gap-4 border-b border-slate-100 py-1.5">
               <span className="text-slate-500">{c.descripcion}</span>
               <span className="cifras font-semibold">{Number(c.valor).toLocaleString('es-CO')}</span>
             </div>
@@ -90,7 +90,7 @@ function Interruptores({ configuracion, onCambio }) {
       {INTERRUPTORES.map(([clave, titulo, ayuda]) => {
         const encendido = valor(clave) === '1'
         return (
-          <div key={clave} className="flex items-center justify-between gap-4 border-b border-slate-100 pb-3 dark:border-slate-800">
+          <div key={clave} className="flex items-center justify-between gap-4 border-b border-slate-100 pb-3">
             <div>
               <div className="text-sm font-medium">{titulo}</div>
               <div className="text-xs text-slate-500">{ayuda}</div>
@@ -98,7 +98,7 @@ function Interruptores({ configuracion, onCambio }) {
             <button
               onClick={() => cambiar(clave, encendido ? '0' : '1')}
               disabled={guardando === clave}
-              className={`relative h-6 w-11 shrink-0 rounded-full transition ${encendido ? 'bg-marca-600' : 'bg-slate-300 dark:bg-slate-700'}`}
+              className={`relative h-6 w-11 shrink-0 rounded-full transition ${encendido ? 'bg-marca-600' : 'bg-slate-300'}`}
               title={encendido ? 'Apagar' : 'Encender'}
             >
               <span className={`absolute top-0.5 h-5 w-5 rounded-full bg-white shadow transition ${encendido ? 'left-[22px]' : 'left-0.5'}`} />
@@ -110,7 +110,7 @@ function Interruptores({ configuracion, onCambio }) {
         <label className="text-sm">
           <span className="mb-1 block text-slate-500">Monto desde el que se exige en envíos (actual: ${Number(valor('MONTO_2FA') ?? 0).toLocaleString('es-CO')})</span>
           <input type="number" min="1000" step="1000" value={monto} onChange={(e) => setMonto(e.target.value)}
-                 className="w-48 rounded-lg border-0 bg-white px-3 py-1.5 ring-1 ring-slate-200 dark:bg-slate-900 dark:ring-slate-700" />
+                 className="w-48 rounded-lg border-0 bg-white px-3 py-1.5 ring-1 ring-slate-200" />
         </label>
         <Boton variante="secundario" disabled={!monto} cargando={guardando === 'MONTO_2FA'}
                onClick={() => { cambiar('MONTO_2FA', String(Math.round(Number(monto)))); setMonto('') }}>
@@ -149,24 +149,24 @@ function FilaRegla({ regla, onGuardada, onError }) {
           <div className="font-mono text-sm font-semibold">{regla.codigo}</div>
           <div className="text-xs text-slate-500">{regla.descripcion}</div>
         </div>
-        <Insignia color={regla.motor === 'neo4j' ? 'bg-sky-50 text-sky-700 dark:bg-sky-950 dark:text-sky-300' : 'bg-orange-50 text-orange-700 dark:bg-orange-950 dark:text-orange-300'}>
+        <Insignia color={regla.motor === 'neo4j' ? 'bg-marca-100 text-marca-700' : 'bg-oro-claro/60 text-marca-900'}>
           {regla.motor === 'neo4j' ? 'Neo4j' : 'MySQL'}
         </Insignia>
       </div>
       <label className="block text-sm">
         <div className="mb-1 flex justify-between"><span className="text-slate-500">Peso</span><span className="cifras font-semibold">+{peso}</span></div>
-        <input type="range" min="0" max="100" value={peso} onChange={(e) => setPeso(Number(e.target.value))} className="w-full accent-emerald-600" />
+        <input type="range" min="0" max="100" value={peso} onChange={(e) => setPeso(Number(e.target.value))} className="w-full accent-marca-700" />
       </label>
       <div className="flex items-end gap-3">
         {regla.umbral !== null && (
           <label className="block flex-1 text-sm">
             <span className="mb-1 block text-slate-500">Umbral (N)</span>
             <input type="number" step="0.5" min="0" value={umbral} onChange={(e) => setUmbral(e.target.value)}
-                   className="w-full rounded-lg border-0 bg-white px-3 py-1.5 ring-1 ring-slate-200 dark:bg-slate-900 dark:ring-slate-700" />
+                   className="w-full rounded-lg border-0 bg-white px-3 py-1.5 ring-1 ring-slate-200" />
           </label>
         )}
         <label className="flex items-center gap-2 pb-1.5 text-sm">
-          <input type="checkbox" checked={activa} onChange={(e) => setActiva(e.target.checked)} className="accent-emerald-600" />
+          <input type="checkbox" checked={activa} onChange={(e) => setActiva(e.target.checked)} className="accent-marca-700" />
           Activa
         </label>
         <Boton className="ml-auto" disabled={!cambio} cargando={guardando} onClick={guardar}>Guardar</Boton>

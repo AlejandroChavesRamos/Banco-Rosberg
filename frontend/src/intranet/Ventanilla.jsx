@@ -20,7 +20,7 @@ export default function Ventanilla() {
   return (
     <div className="max-w-3xl space-y-6">
       <div>
-        <h1 className="text-2xl font-bold tracking-tight">Ventanilla</h1>
+        <h1 className="text-3xl font-bold tracking-tight text-marca-700">Ventanilla</h1>
         <p className="text-sm text-slate-500">Atención presencial a clientes. Verifica siempre el documento original.</p>
       </div>
       <div className="flex flex-wrap gap-2">
@@ -31,7 +31,7 @@ export default function Ventanilla() {
             className={`rounded-xl px-4 py-2 text-sm font-medium ${
               pestana === p.id
                 ? 'bg-marca-600 text-white'
-                : 'bg-white text-slate-600 ring-1 ring-slate-200 hover:bg-slate-50 dark:bg-slate-900 dark:text-slate-300 dark:ring-slate-700'
+                : 'bg-white text-slate-600 ring-1 ring-slate-200 hover:bg-slate-50'
             }`}
           >
             {p.texto}
@@ -85,14 +85,14 @@ function BuscarCliente() {
             <thead className="text-left text-xs text-slate-500">
               <tr><th className="py-2">Cuenta</th><th>Tipo</th><th className="text-right">Saldo</th><th className="text-right">Estado</th></tr>
             </thead>
-            <tbody className="divide-y divide-slate-100 dark:divide-slate-800">
+            <tbody className="divide-y divide-slate-100">
               {op.resultado.cuentas.map((c) => (
                 <tr key={c.numero}>
                   <td className="cifras py-2">{c.numero}</td>
                   <td className="capitalize">{c.tipo}</td>
                   <td className="cifras text-right">{cop(c.saldo)}</td>
                   <td className="text-right">
-                    <Insignia color={c.estado === 'activa' ? 'bg-marca-50 text-marca-700 dark:bg-marca-950 dark:text-marca-300' : 'bg-slate-100 text-slate-600 dark:bg-slate-800'}>
+                    <Insignia color={c.estado === 'activa' ? 'bg-marca-50 text-marca-700' : 'bg-slate-100 text-slate-600'}>
                       {c.estado}
                     </Insignia>
                   </td>
@@ -171,7 +171,7 @@ function NuevoCliente() {
       {op.resultado ? (
         <div className="space-y-4">
           <Aviso tipo="exito">Cliente creado con la cuenta {op.resultado.cuenta}.</Aviso>
-          <div className="rounded-xl bg-slate-50 p-4 text-center dark:bg-slate-800">
+          <div className="rounded-xl bg-slate-50 p-4 text-center">
             <div className="text-xs text-slate-500">Contraseña temporal (entrégala al cliente en un papel sellado)</div>
             <div className="cifras mt-1 text-2xl font-bold tracking-wider">{op.resultado.password_temporal}</div>
             <div className="mt-1 text-xs text-slate-500">No se volverá a mostrar. El cliente deberá cambiarla al entrar.</div>

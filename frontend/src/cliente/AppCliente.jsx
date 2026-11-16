@@ -3,13 +3,18 @@
 // barra superior con el menu (pensada para computador) y proteccion de
 // las pantallas que exigen sesion.
 // =====================================================================
-import { Navigate, NavLink, Outlet, Route, Routes, useLocation, useNavigate } from 'react-router-dom'
-import { BotonTema, Logo, PantallaCargando } from '../componentes/ui'
+import { Link, Navigate, NavLink, Outlet, Route, Routes, useLocation, useNavigate } from 'react-router-dom'
+import Icono from '../componentes/Icono'
+import NoEncontrado from '../componentes/NoEncontrado'
+import { Logo, PantallaCargando } from '../componentes/ui'
 import { useSesion } from '../sesion'
 import CambiarClave from './CambiarClave'
+import Carreras from './Carreras'
 import Inicio from './Inicio'
 import Llaves from './Llaves'
 import Login from './Login'
+import Perfil from './Perfil'
+import Recuperar from './Recuperar'
 import Registro from './Registro'
 import AvisosSeguridad from './AvisosSeguridad'
 import Retiro from './Retiro'
@@ -22,6 +27,8 @@ export default function AppCliente() {
       {/* Pantallas publicas */}
       <Route path="login" element={<Login />} />
       <Route path="registro" element={<Registro />} />
+      <Route path="recuperar" element={<Recuperar />} />
+      <Route path="carreras" element={<Carreras />} />
 
       {/* Pantallas que exigen haber iniciado sesion */}
       <Route element={<Marco />}>
@@ -29,19 +36,21 @@ export default function AppCliente() {
         <Route path="transferir" element={<Transferir />} />
         <Route path="retiro" element={<Retiro />} />
         <Route path="llaves" element={<Llaves />} />
+        <Route path="perfil" element={<Perfil />} />
         <Route path="cambiar-clave" element={<CambiarClave />} />
         <Route path="seguridad" element={<Seguridad />} />
+        <Route path="*" element={<NoEncontrado completa={false} volver="/app" textoVolver="Ir a mis cuentas" />} />
       </Route>
     </Routes>
   )
 }
 
 const MENU = [
-  { a: '/app', texto: 'Inicio' },
-  { a: '/app/transferir', texto: 'Enviar dinero' },
-  { a: '/app/retiro', texto: 'Retirar sin tarjeta' },
-  { a: '/app/llaves', texto: 'Mis llaves' },
-  { a: '/app/seguridad', texto: 'Seguridad' },
+  { a: '/app', texto: 'Inicio', icono: 'inicio' },
+  { a: '/app/transferir', texto: 'Enviar dinero', icono: 'enviar' },
+  { a: '/app/retiro', texto: 'Retirar sin tarjeta', icono: 'codigo' },
+  { a: '/app/llaves', texto: 'Mis llaves', icono: 'llave' },
+  { a: '/app/seguridad', texto: 'Seguridad', icono: 'escudo' },
 ]
 
 // Marco comun + proteccion: si no hay sesion, manda al login
@@ -65,9 +74,11 @@ function Marco() {
   return (
     <div className="min-h-screen">
       {/* Barra superior */}
-      <header className="sticky top-0 z-10 border-b border-slate-200 bg-white/90 backdrop-blur dark:border-slate-800 dark:bg-slate-950/90">
+      <header className="no-imprimir sticky top-0 z-10 border-b border-marca-100 bg-white/90 backdrop-blur">
         <div className="mx-auto flex max-w-6xl flex-wrap items-center gap-x-8 gap-y-2 px-6 py-3">
-          <Logo />
+          <Link to="/app" aria-label="Banco Rosberg, inicio">
+            <Logo />
+          </Link>
           {!usuario.debeCambiar && (
             <nav className="order-3 flex w-full gap-1 overflow-x-auto md:order-none md:w-auto">
               {MENU.map((m) => (
@@ -76,30 +87,36 @@ function Marco() {
                   to={m.a}
                   end
                   className={({ isActive }) =>
-                    `whitespace-nowrap rounded-lg px-3 py-2 text-sm font-medium ${
-                      isActive
-                        ? 'bg-marca-50 text-marca-700 dark:bg-marca-950 dark:text-marca-300'
-                        : 'text-slate-600 hover:bg-slate-100 dark:text-slate-400 dark:hover:bg-slate-800'
+                    `flex items-center gap-2 whitespace-nowrap rounded-full px-4 py-2 text-sm font-medium transition-colors ${
+                      isActive ? 'bg-marca-700 text-white' : 'text-marca-700 hover:bg-marca-100'
                     }`
                   }
                 >
+                  <Icono nombre={m.icono} className="h-4 w-4" />
                   {m.texto}
                 </NavLink>
               ))}
             </nav>
           )}
-          <div className="ml-auto flex items-center gap-2">
-            <BotonTema />
-            <div className="hidden text-right leading-tight sm:block">
-              <div className="text-sm font-semibold">{usuario.nombre}</div>
-              <NavLink to="/app/cambiar-clave" className="text-xs text-slate-500 hover:text-marca-600">
-                Cambiar contraseña
-              </NavLink>
-            </div>
+          <div className="ml-auto flex items-center gap-3">
+            <NavLink
+              to="/app/perfil"
+              className={({ isActive }) =>
+                `hidden items-center gap-2.5 rounded-full py-1 pl-1 pr-4 text-sm font-semibold text-marca-700 transition-colors sm:flex ${
+                  isActive ? 'bg-marca-100' : 'hover:bg-marca-50'
+                }`
+              }
+            >
+              <span className="grid h-8 w-8 place-items-center rounded-full bg-marca-700 text-white">
+                <Icono nombre="usuario" className="h-4 w-4" />
+              </span>
+              {usuario.nombre.split(' ')[0]}
+            </NavLink>
             <button
               onClick={salir}
-              className="ml-2 rounded-lg px-3 py-2 text-sm font-medium text-slate-500 ring-1 ring-slate-200 hover:bg-slate-100 dark:text-slate-400 dark:ring-slate-700 dark:hover:bg-slate-800"
+              className="boton-vivo flex items-center gap-2 rounded-full px-4 py-2 text-sm font-medium text-marca-700 ring-1 ring-marca-200 hover:bg-marca-50"
             >
+              <Icono nombre="salir" className="h-4 w-4" />
               Salir
             </button>
           </div>

@@ -2,9 +2,10 @@
 import { useState } from 'react'
 import { Link, Navigate, useNavigate } from 'react-router-dom'
 import { PasoCodigo } from '../componentes/DosPasos'
-import { Aviso, Boton, Campo, Logo, PantallaCargando } from '../componentes/ui'
+import { Aviso, Boton, Campo, PantallaCargando } from '../componentes/ui'
 import { useSesion } from '../sesion'
 import MarcoPublico from './MarcoPublico'
+import SeccionesInicio from './SeccionesInicio'
 
 export default function Login() {
   const { usuario, cargando, iniciarSesion } = useSesion()
@@ -47,28 +48,28 @@ export default function Login() {
   }
 
   return (
-    <MarcoPublico>
-      <div className="mb-8 lg:hidden">
-        <Logo subtitulo="Banco Rosberg" />
-      </div>
-      <h1 className="text-3xl font-bold tracking-tight">Hola de nuevo</h1>
-      <p className="mb-8 mt-1 text-slate-500 dark:text-slate-400">Ingresa a tu banca en línea.</p>
+    <MarcoPublico secciones={<SeccionesInicio />}>
+      <h1 className="font-titulo text-4xl font-bold tracking-tight text-marca-700">Hola de nuevo</h1>
+      <p className="mb-8 mt-2 text-marca-500">Ingresa a tu banca en línea.</p>
 
       <form onSubmit={entrar} className="space-y-5">
         <Campo etiqueta="Correo" type="email" required autoComplete="username"
                value={email} onChange={(e) => setEmail(e.target.value)} />
         <Campo etiqueta="Contraseña" type="password" required autoComplete="current-password"
                value={password} onChange={(e) => setPassword(e.target.value)} />
+        <div className="-mt-2 text-right">
+          <Link to="/app/recuperar" className="enlace-vivo text-sm font-medium text-marca-700">¿Olvidaste tu contraseña?</Link>
+        </div>
         <Aviso>{error}</Aviso>
-        <Boton type="submit" cargando={enviando} className="w-full py-3">Ingresar</Boton>
+        <Boton type="submit" cargando={enviando} className="w-full py-3 text-base">Ingresar</Boton>
       </form>
 
-      <p className="mt-8 text-sm text-slate-500">
+      <p className="mt-8 text-sm text-marca-500">
         ¿No tienes cuenta?{' '}
-        <Link to="/app/registro" className="font-semibold text-marca-600 dark:text-marca-400">Ábrela en minutos</Link>
+        <Link to="/app/registro" className="enlace-vivo font-semibold text-marca-700">Ábrela en minutos</Link>
       </p>
       <p className="mt-12 text-xs text-slate-400">
-        ¿Eres empleado? Usa la <Link to="/intranet" className="underline">Intranet Rosberg</Link>
+        ¿Eres empleado? Usa la <Link to="/intranet" className="underline hover:text-marca-700">Intranet Rosberg</Link>
       </p>
     </MarcoPublico>
   )

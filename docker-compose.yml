@@ -123,7 +123,6 @@ services:
       # El codigo se monta para que los cambios se vean al guardar;
       # node_modules se queda dentro del contenedor.
       - ./frontend/src:/codigo/src
-      - ./frontend/public:/codigo/public
       - ./frontend/index.html:/codigo/index.html
     ports:
       - "127.0.0.1:5173:5173"

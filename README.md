@@ -7,7 +7,7 @@ Banco simulado con **detector de fraude**. Proyecto final de Bases de Datos.
 - **Backend** en Python (FastAPI) y **frontend** en React.
 - **Todo corre en contenedores Docker**: no hay que instalar MySQL, Neo4j, Python ni Node.
 
-> 📘 El modelo de datos, el diccionario de datos y las decisiones de diseño están en [docs/BASE_DE_DATOS.md](docs/BASE_DE_DATOS.md).
+> El modelo de datos, el diccionario de datos y las decisiones de diseño están en [docs/BASE_DE_DATOS.md](docs/BASE_DE_DATOS.md).
 
 ---
 
@@ -24,8 +24,9 @@ Banco simulado con **detector de fraude**. Proyecto final de Bases de Datos.
 9. [El simulador](#9-el-simulador)
 10. [Modo producción (HTTPS)](#10-modo-producción-https)
 11. [Comandos del día a día](#11-comandos-del-día-a-día)
-12. [Estructura del proyecto](#12-estructura-del-proyecto)
-13. [Problemas comunes](#13-problemas-comunes)
+12. [Actualizar el proyecto sin perder los datos](#12-actualizar-el-proyecto-sin-perder-los-datos)
+13. [Estructura del proyecto](#13-estructura-del-proyecto)
+14. [Problemas comunes](#14-problemas-comunes)
 
 ---
 
@@ -36,8 +37,6 @@ Banco simulado con **detector de fraude**. Proyecto final de Bases de Datos.
 | **Windows 10/11** con virtualización activada | Docker en Windows usa WSL 2 | Administrador de tareas → Rendimiento → CPU → *Virtualización: Habilitado* |
 | **WSL 2** | El Linux liviano sobre el que corre Docker | PowerShell como administrador: `wsl --install` y reiniciar |
 | **Docker Desktop** | Ejecutar los contenedores | https://www.docker.com/products/docker-desktop/ |
-| **Git** | Descargar el proyecto | https://git-scm.com |
-| ~6 GB de RAM libres | MySQL + Neo4j + backend + frontend | — |
 | *(Opcional)* MySQL Workbench, Neo4j Desktop | Ver los datos con interfaz gráfica | — |
 
 **No necesitas instalar** MySQL, Neo4j, Python ni Node: vienen dentro de los contenedores.
@@ -100,7 +99,7 @@ CLAVE_CIFRADO=Zf8xP2mWn7...=
 CLAVE_INDICES=Hc4tR6uLs0...=
 ```
 
-> ⚠️ **No pierdas `CLAVE_CIFRADO`.** Con ella se cifran las cédulas y los celulares; sin ella esos datos no se pueden recuperar. Si dejas el texto `GENERA_UNA_CLAVE`, el backend no arranca.
+> **No pierdas `CLAVE_CIFRADO`.** Con ella se cifran las cédulas y los celulares; sin ella esos datos no se pueden recuperar. Si dejas el texto `GENERA_UNA_CLAVE`, el backend no arranca.
 
 ---
 
@@ -146,7 +145,7 @@ docker compose exec backend python -m app.cli crear-admin --email admin@rosberg.
 
 Te pedirá la contraseña dos veces (mínimo 10 caracteres, con letras y números). Mientras escribes no se ve nada: es normal.
 
-Los demás empleados (cajeros, analistas) se crean desde la Intranet: **Empleados → Nuevo empleado**. Cada uno recibe una contraseña temporal que debe cambiar al entrar.
+Los demás empleados (cajeros, analistas) se crean desde la Intranet: **Empleados → Nuevo empleado**. Cada uno recibe una contraseña temporal que debe cambiar al entrar. Si un empleado olvida su contraseña, el administrador le da una temporal nueva desde **Empleados → Restablecer contraseña**.
 
 ---
 
@@ -166,7 +165,7 @@ Tarda unos 4 minutos y solo se puede ejecutar una vez. Al terminar muestra la li
 
 | Portal | Dirección | Quién entra |
 |---|---|---|
-| **App Rosberg** | http://localhost:5173/app | Clientes. Cualquiera puede registrarse desde la pantalla de inicio. |
+| **App Rosberg** | http://localhost:5173/app | Clientes. Cualquiera puede registrarse desde la pantalla de inicio. La página de inicio también tiene *Pedir tarjeta*, *Contáctanos* y *Trabaja con nosotros* (`/app/carreras`). |
 | **Intranet Rosberg** | http://localhost:5173/intranet | Empleados: cajero, analista de fraude y administrador. |
 | **API (documentación interactiva)** | http://localhost:8000/docs | Para probar la API directamente. El login exige `"portal": "app"` o `"portal": "intranet"`. |
 | **Estado del sistema** | http://localhost:8000/salud | Estado de la API y de cada base. |
@@ -179,6 +178,8 @@ Recorrido sugerido:
 4. **App**: registra una llave (celular o correo) y transfiere a otro cliente.
 5. **App** → Retirar sin tarjeta: genera un código; canjéalo como cajero.
 6. **Intranet** (analista → Alertas): revisa alertas, abre el grafo de una cuenta, lanza el barrido del historial.
+7. **App** (sin iniciar sesión): deja tu correo en *Contáctanos*; en la **Intranet → Solicitudes** aparece para que un empleado la atienda.
+8. **App** → *¿Olvidaste tu contraseña?*: el cliente la cambia demostrando su cédula y su celular (el banco no envía correos). En **Perfil** ve sus datos enmascarados.
 
 ---
 
@@ -259,7 +260,40 @@ Los datos viven en **volúmenes** (`mysql_data`, `neo4j_data`), no en los conten
 
 ---
 
-## 12. Estructura del proyecto
+## 12. Actualizar el proyecto sin perder los datos
+
+Los scripts de `db/mysql/init/` **solo corren cuando la base está vacía**. Si ya tenías el proyecto corriendo y haces `git pull`, las tablas o permisos nuevos no aparecen solos: hay que aplicarlos a mano (o borrar todo con `docker compose down -v`, perdiendo los datos).
+
+```powershell
+git pull
+docker compose up -d --build
+```
+
+Luego aplica lo que tu base no tenga todavía:
+
+| Cambio | Si te falta… | Comando |
+|---|---|---|
+| Seguridad (2FA, avisos de inicio de sesión) | Error `Unknown column 'totp_ultimo_paso'` o falta la tabla `avisos_login` | Ver abajo ① |
+| Solicitudes públicas (tarjeta, contacto, empleo) | Error `Table 'banco.solicitudes_publicas' doesn't exist` | Ver abajo ② |
+
+① Seguridad (en PowerShell):
+
+```powershell
+Get-Content db/mysql/migraciones/2026-11-15_fase6_seguridad.sql | docker compose exec -T mysql sh -c 'mysql -uroot -p"$MYSQL_ROOT_PASSWORD" banco'
+docker compose exec mysql bash /docker-entrypoint-initdb.d/03_usuarios.sh
+```
+
+② Solicitudes:
+
+```powershell
+docker compose exec mysql bash /docker-entrypoint-initdb.d/07_solicitudes.sh
+```
+
+Después reinicia el backend: `docker compose restart backend`.
+
+---
+
+## 13. Estructura del proyecto
 
 ```
 ProyectoFinalBase/
@@ -270,7 +304,7 @@ ProyectoFinalBase/
 │   ├── Dockerfile
 │   └── app/
 │       ├── main.py             ← arranque de la API
-│       ├── rutas/              ← endpoints: auth, cliente, cajero, analista, admin, tablero, seguridad
+│       ├── rutas/              ← endpoints: auth, cliente, cajero, analista, admin, tablero, seguridad, publico
 │       ├── seguridad/          ← Argon2, JWT, cifrado AES-GCM, 2FA, roles
 │       ├── servicios/          ← lógica del banco, auditoría, sincronización con Neo4j
 │       ├── antifraude/         ← motor en tiempo real y barrido del historial
@@ -278,6 +312,10 @@ ProyectoFinalBase/
 ├── frontend/                   ← pantallas en React (App + Intranet)
 │   ├── Dockerfile
 │   └── src/
+│       ├── cliente/            ← pantallas de la App Rosberg
+│       ├── intranet/           ← pantallas de la Intranet
+│       ├── componentes/        ← piezas comunes (botones, íconos, 2FA, logo animado)
+│       └── imagenes/           ← fotos de las pantallas (créditos en CREDITOS.md)
 ├── nginx/                      ← configuración de producción (HTTPS, límites, cabeceras)
 ├── db/
 │   ├── mysql/init/             ← scripts que MySQL ejecuta la primera vez
@@ -289,7 +327,7 @@ ProyectoFinalBase/
 
 ---
 
-## 13. Problemas comunes
+## 14. Problemas comunes
 
 | Síntoma | Solución |
 |---|---|
@@ -301,7 +339,8 @@ ProyectoFinalBase/
 | Neo4j: *Connection to instance failed* | Usa `bolt://127.0.0.1:7688` (no `localhost`, no `neo4j+s://`). |
 | `/bin/bash^M: bad interpreter` | Un `.sh` quedó con saltos de línea de Windows. En VS Code cambia `CRLF` → `LF`. El `.gitattributes` del proyecto lo evita al clonar. |
 | `https://localhost` no carga | Estás en modo desarrollo: usa `http://localhost:5173/app` o sigue la sección 10. |
-| El usuario quedó bloqueado | 5 contraseñas incorrectas bloquean el usuario 15 minutos. Espera o pide a otro admin que revise. |
+| El usuario quedó bloqueado | 5 intentos fallidos (contraseña, código 2FA o recuperación) bloquean el usuario 15 minutos; el mensaje dice cuántos minutos faltan. Un empleado puede pedirle al admin una contraseña temporal. |
+| `Table ... doesn't exist` o `Unknown column` tras un `git pull` | Tu base es anterior al cambio: sigue la sección 12. |
 
 ---
 

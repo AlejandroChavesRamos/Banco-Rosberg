@@ -30,8 +30,8 @@ export function enmascarar(numero) {
 
 // Textos y colores para el estado de una transaccion
 export const ESTADOS = {
-  aprobada: { texto: 'Exitosa', color: 'text-marca-700 bg-marca-50 dark:text-marca-300 dark:bg-marca-950' },
-  retenida: { texto: 'En revisión', color: 'text-amber-700 bg-amber-50 dark:text-amber-300 dark:bg-amber-950' },
-  bloqueada: { texto: 'Bloqueada', color: 'text-red-700 bg-red-50 dark:text-red-300 dark:bg-red-950' },
-  rechazada: { texto: 'Rechazada', color: 'text-red-700 bg-red-50 dark:text-red-300 dark:bg-red-950' },
+  aprobada: { texto: 'Exitosa', color: 'text-marca-700 bg-marca-50' },
+  retenida: { texto: 'En revisión', color: 'text-amber-700 bg-amber-50' },
+  bloqueada: { texto: 'Bloqueada', color: 'text-red-700 bg-red-50' },
+  rechazada: { texto: 'Rechazada', color: 'text-red-700 bg-red-50' },
 }

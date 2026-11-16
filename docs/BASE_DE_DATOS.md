@@ -31,7 +31,7 @@ Hay tres esquemas:
 
 | Esquema | Motor | Contenido |
 |---|---|---|
-| `banco` | MySQL | Los datos del banco (13 tablas, 2 vistas, 3 funciones, 6 procedimientos, 5 triggers) |
+| `banco` | MySQL | Los datos del banco (14 tablas, 2 vistas, 3 funciones, 6 procedimientos, 5 triggers) |
 | `banco_sim` | MySQL | La "hoja de respuestas" del simulador (5 tablas). Un banco real no tendría esto; por eso está aparte |
 | `neo4j` | Neo4j | El grafo de relaciones |
 
@@ -200,9 +200,18 @@ erDiagram
         char hash_anterior
         char hash
     }
+    SOLICITUDES_PUBLICAS {
+        bigint id PK
+        enum tipo "tarjeta contacto empleo"
+        varchar email
+        varchar mensaje
+        varchar ip
+        boolean atendida
+        datetime creada_en
+    }
 ```
 
-`REGLAS_FRAUDE`, `CONFIGURACION` y `AUDITORIA` no tienen relaciones de clave foránea a propósito: las dos primeras son parámetros del sistema y la auditoría debe conservar el registro aunque la fila a la que se refiere cambie.
+`REGLAS_FRAUDE`, `CONFIGURACION`, `AUDITORIA` y `SOLICITUDES_PUBLICAS` no tienen relaciones de clave foránea a propósito: las dos primeras son parámetros del sistema, la auditoría debe conservar el registro aunque la fila a la que se refiere cambie y las solicitudes las deja cualquier visitante, que todavía no es cliente.
 
 ---
 
@@ -226,7 +235,7 @@ Clientes y empleados del banco. El rol decide qué puede hacer cada uno.
 | `totp_secreto_cifrado` | VARBINARY(512) | | Secreto de la verificación en dos pasos, cifrado |
 | `totp_activo` | BOOLEAN | NN, por defecto FALSE | Si el usuario tiene 2FA activo |
 | `totp_ultimo_paso` | BIGINT | | Último intervalo de 30 s usado: impide reutilizar un código 2FA |
-| `intentos_fallidos` | TINYINT UNSIGNED | NN, por defecto 0 | Contraseñas incorrectas seguidas |
+| `intentos_fallidos` | TINYINT UNSIGNED | NN, por defecto 0 | Intentos fallidos seguidos (contraseña, código 2FA o recuperación de contraseña); al llegar a `MAX_INTENTOS_LOGIN` se bloquea |
 | `bloqueado_hasta` | DATETIME | | Hasta cuándo está bloqueado por fuerza bruta |
 | `debe_cambiar_password` | BOOLEAN | NN | TRUE si tiene contraseña temporal (creado en ventanilla o por el admin) |
 | `activo` | BOOLEAN | NN, por defecto TRUE | FALSE = no puede entrar (empleado desactivado) |
@@ -398,6 +407,21 @@ Registro **inmutable** de todo lo importante, con hash encadenado.
 | `hash_anterior` | CHAR(64) | Hash del registro anterior |
 | `hash` | CHAR(64) | SHA-256 de este registro + `hash_anterior` |
 
+### `solicitudes_publicas`
+Lo que dejan los visitantes **sin iniciar sesión** en la página de inicio: pedir la tarjeta física, que el banco les escriba o postularse a un empleo. El banco no envía correos (proyecto académico): la solicitud queda aquí y un empleado la atiende desde **Intranet → Solicitudes**. Se crea con `init/07_solicitudes.sh`.
+
+| Columna | Tipo | Descripción |
+|---|---|---|
+| `id` | BIGINT UNSIGNED PK | |
+| `tipo` | ENUM | `tarjeta`, `contacto` o `empleo` |
+| `email` | VARCHAR(254) | Correo del visitante |
+| `mensaje` | VARCHAR(500) NULL | Texto opcional |
+| `ip` | VARCHAR(45) | Para limitar el abuso: máximo 5 solicitudes por IP por hora |
+| `atendida` | BOOLEAN | Lo único que un empleado puede cambiar |
+| `creada_en` | DATETIME | |
+
+Índices: `(ip, creada_en)` para contar las solicitudes recientes de una IP y `(atendida, creada_en)` para la bandeja de pendientes.
+
 ### Vistas
 
 | Vista | Contenido |
@@ -449,8 +473,8 @@ Cada componente se conecta con su propio usuario y el **mínimo privilegio** que
 | Usuario | Lo usa | Puede | No puede |
 |---|---|---|---|
 | `root` | Solo administración (Workbench) | Todo | — |
-| `banco_app` | El backend (API) | Leer; insertar usuarios, cuentas, llaves, alertas…; actualizar **solo algunas columnas** (por ejemplo, el `estado` de una cuenta y las columnas de seguridad de `usuarios`); ejecutar los 5 procedimientos de la app y las 3 funciones | Cambiar `saldo` directamente, cambiar el `rol` de un usuario, borrar cualquier fila, insertar transacciones sin procedimiento, ejecutar `sp_cargar_historico`, leer `banco_sim` |
-| `banco_reportes` | Analistas en Workbench (solo lectura) | Leer vistas, transacciones, alertas, reglas y auditoría | Ver la tabla `usuarios` (datos personales y hashes), modificar nada |
+| `banco_app` | El backend (API) | Leer; insertar usuarios, cuentas, llaves, alertas…; actualizar **solo algunas columnas** (por ejemplo, el `estado` de una cuenta y las columnas de seguridad de `usuarios`); ejecutar los 5 procedimientos de la app y las 3 funciones; crear solicitudes públicas y marcarlas como atendidas | Cambiar `saldo` directamente, editar o borrar una solicitud, cambiar el `rol` de un usuario, borrar cualquier fila, insertar transacciones sin procedimiento, ejecutar `sp_cargar_historico`, leer `banco_sim` |
+| `banco_reportes` | Analistas en Workbench (solo lectura) | Leer vistas, transacciones, alertas, reglas, auditoría y solicitudes públicas | Ver la tabla `usuarios` (datos personales y hashes), modificar nada |
 | `banco_simulador` | El simulador | Leer el banco; crear clientes y cuentas con fechas pasadas; ejecutar `sp_cargar_historico`; todo en `banco_sim` | Cambiar saldos, borrar, fechar movimientos en el futuro |
 
 Ejemplos de privilegios por columna (`03_usuarios.sh`):
@@ -458,7 +482,10 @@ Ejemplos de privilegios por columna (`03_usuarios.sh`):
 ```sql
 GRANT INSERT (numero, usuario_id, tipo) ON banco.cuentas TO 'banco_app'@'%';   -- no puede elegir el saldo
 GRANT UPDATE (estado)                   ON banco.cuentas TO 'banco_app'@'%';   -- solo congelar/activar
+GRANT UPDATE (atendida)                 ON banco.solicitudes_publicas TO 'banco_app'@'%';  -- no puede cambiar el contenido
 ```
+
+Los permisos de una tabla nueva se dan en el mismo script que la crea (`07_solicitudes.sh`), porque los nombres de los usuarios vienen del `.env`.
 
 ---
 
@@ -580,6 +607,9 @@ Cada índice responde a una consulta real: movimientos de una cuenta y reglas po
 
 ### Privilegios mínimos y separación de funciones
 La app, los reportes y el simulador usan usuarios distintos. Si alguien comprometiera la app, no podría borrar transacciones, cambiar saldos, escalar privilegios ni leer la hoja de respuestas del simulador.
+
+### Formularios públicos sin abrir la puerta al abuso
+`solicitudes_publicas` es la única tabla en la que se puede escribir **sin iniciar sesión**. Por eso guarda la IP y la API rechaza (429) la sexta solicitud de una misma IP en una hora; el usuario de la app solo puede insertar y marcar `atendida`, nunca editar ni borrar lo que dejó el visitante.
 
 ### Zona horaria
 MySQL guarda la hora local del banco (`America/Bogota`) y Neo4j guarda UTC. La conversión se hace al sincronizar, porque las reglas de tiempo en Cypher (`datetime() - duration('PT48H')`) trabajan en UTC.

@@ -17,7 +17,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query, Request, Response,
 from ..config import settings
 from ..db.mysql import consultar_uno, ejecutar, leer_config, obtener_conexion
 from ..esquemas import (CambioPassword, CodigoEntrada, Desactivar2FA, LoginEntrada, Portal,
-                        RegistroEntrada, TokenSalida, Verificar2FA)
+                        RecuperarPassword, RegistroEntrada, TokenSalida, Verificar2FA)
 from ..seguridad import cifrado, contrasenas, doble_factor, tokens
 from ..seguridad.dependencias import UsuarioActual, usuario_actual
 from ..servicios import auditoria, avisos, banco, grafo
@@ -27,7 +27,8 @@ router = APIRouter(prefix="/auth", tags=["1. Autenticacion"])
 
 _CREDENCIALES_INVALIDAS = "Correo o contrasena incorrectos"
 _SELECT_USUARIO = ("SELECT id, rol, nombre, email, password_hash, activo, debe_cambiar_password, totp_activo, "
-                   "(bloqueado_hasta IS NOT NULL AND bloqueado_hasta > NOW()) AS bloqueado FROM usuarios ")
+                   "(bloqueado_hasta IS NOT NULL AND bloqueado_hasta > NOW()) AS bloqueado, "
+                   "TIMESTAMPDIFF(SECOND, NOW(), bloqueado_hasta) AS segundos_bloqueo FROM usuarios ")
 
 
 def _cookie(portal: str) -> str:
@@ -103,6 +104,12 @@ def _completar_login(conn, request: Request, response: Response, usuario: dict, 
     return _emitir_sesion(conn, response, usuario, portal, dispositivo_id, ip)
 
 
+def _mensaje_bloqueo(segundos: int | None) -> str:
+    minutos = max(1, -(-(segundos or 0) // 60))  # redondea hacia arriba
+    return (f"Usuario bloqueado por intentos fallidos. Podra intentar de nuevo en "
+            f"{minutos} minuto{'s' if minutos != 1 else ''}.")
+
+
 @router.post("/registro", status_code=201, summary="Registro en linea de un cliente nuevo")
 def registro(datos: RegistroEntrada, request: Request, conn=Depends(obtener_conexion)):
     creado = banco.crear_cliente(
@@ -134,10 +141,10 @@ def login(datos: LoginEntrada, request: Request, response: Response, conn=Depend
     # 2) Usuario bloqueado temporalmente por intentos fallidos
     if usuario["bloqueado"]:
         _evento(conn, email, ip, False, usuario["id"])
-        raise HTTPException(status.HTTP_423_LOCKED,
-                            "Usuario bloqueado temporalmente por intentos fallidos. Intente mas tarde.")
+        raise HTTPException(status.HTTP_423_LOCKED, _mensaje_bloqueo(usuario["segundos_bloqueo"]))
 
-    # 3) Contrasena incorrecta: sumar intento y bloquear si llega al maximo
+    # 3) Contrasena incorrecta: sumar intento y bloquear si llega al maximo.
+    #    El mensaje es el mismo que si el correo no existiera (evita enumerar clientes).
     if not contrasenas.verificar(usuario["password_hash"], datos.password):
         _registrar_fallo(conn, usuario["id"], ip)
         _evento(conn, email, ip, False, usuario["id"])
@@ -170,7 +177,7 @@ def verificar_2fa(datos: Verificar2FA, request: Request, response: Response, con
     if not usuario or not usuario["activo"]:
         raise HTTPException(status.HTTP_401_UNAUTHORIZED, "Usuario no valido")
     if usuario["bloqueado"]:
-        raise HTTPException(status.HTTP_423_LOCKED, "Usuario bloqueado temporalmente por intentos fallidos.")
+        raise HTTPException(status.HTTP_423_LOCKED, _mensaje_bloqueo(usuario["segundos_bloqueo"]))
     if not doble_factor.verificar_codigo(conn, usuario["id"], datos.codigo):
         # Los codigos fallidos cuentan para el bloqueo, igual que una contrasena mala
         _registrar_fallo(conn, usuario["id"], ip_cliente(request), "2FA_FALLIDO")
@@ -305,3 +312,45 @@ def desactivar_2fa(datos: Desactivar2FA, request: Request,
                    "totp_ultimo_paso = NULL WHERE id = %s", (u.id,))
     auditoria.registrar(conn, "2FA_DESACTIVADO", "usuarios", u.id, usuario_id=u.id, ip=ip_cliente(request))
     return {"mensaje": "Verificacion en dos pasos desactivada"}
+
+
+@router.post("/recuperar-password", summary="Olvide mi contrasena (solo clientes)")
+def recuperar_password(datos: RecuperarPassword, request: Request, conn=Depends(obtener_conexion)):
+    """El banco no envia correos, asi que el cliente demuestra quien es con la
+    cedula y el celular que registro al abrir la cuenta. Los empleados no usan
+    esta ruta: su contrasena la restablece un administrador.
+
+    Los intentos fallidos cuentan igual que los del login: tras varios, el
+    usuario queda bloqueado (evita adivinar cedulas o celulares a la fuerza).
+    El mensaje de error es el mismo exista o no el correo (evita enumerar clientes).
+    """
+    ip = ip_cliente(request)
+    no_coincide = HTTPException(status.HTTP_400_BAD_REQUEST, "Los datos no coinciden con los de ninguna cuenta")
+    usuario = consultar_uno(
+        conn,
+        "SELECT id, activo, documento_hash, telefono_cifrado, "
+        "(bloqueado_hasta IS NOT NULL AND bloqueado_hasta > NOW()) AS bloqueado, "
+        "TIMESTAMPDIFF(SECOND, NOW(), bloqueado_hasta) AS segundos_bloqueo "
+        "FROM usuarios WHERE email = %s AND rol = 'cliente'",
+        (datos.email.lower(),),
+    )
+    if not usuario or not usuario["activo"]:
+        raise no_coincide
+    if usuario["bloqueado"]:
+        raise HTTPException(status.HTTP_423_LOCKED, _mensaje_bloqueo(usuario["segundos_bloqueo"]))
+
+    cedula_ok = cifrado.iguales(usuario["documento_hash"] or "", cifrado.indice_ciego(datos.cedula, "cedula"))
+    celular_ok = bool(usuario["telefono_cifrado"]) and cifrado.iguales(
+        cifrado.descifrar(usuario["telefono_cifrado"]), datos.celular)
+    if not (cedula_ok and celular_ok):
+        _registrar_fallo(conn, usuario["id"], ip, "RECUPERACION_FALLIDA")
+        raise no_coincide
+
+    ejecutar(conn, "UPDATE usuarios SET password_hash = %s, debe_cambiar_password = FALSE, "
+                   "intentos_fallidos = 0, bloqueado_hasta = NULL WHERE id = %s",
+             (contrasenas.hashear(datos.nueva), usuario["id"]))
+    # Si alguien tenia una sesion abierta con la contrasena vieja, queda fuera
+    ejecutar(conn, "UPDATE sesiones SET revocada = TRUE WHERE usuario_id = %s", (usuario["id"],))
+    auditoria.registrar(conn, "RECUPERACION_PASSWORD", "usuarios", usuario["id"],
+                        usuario_id=usuario["id"], ip=ip)
+    return {"mensaje": "Contrasena actualizada. Ya puede iniciar sesion."}

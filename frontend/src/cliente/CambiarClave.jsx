@@ -35,7 +35,7 @@ export default function CambiarClave() {
 
   return (
     <div className="max-w-md space-y-5">
-      <h1 className="text-2xl font-bold tracking-tight">Cambiar contraseña</h1>
+      <h1 className="text-3xl font-bold tracking-tight text-marca-700">Cambiar contraseña</h1>
       {usuario?.debeCambiar && (
         <Aviso tipo="advertencia">
           Tu usuario fue creado con una contraseña temporal. Crea una propia para continuar.

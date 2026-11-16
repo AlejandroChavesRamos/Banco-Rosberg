@@ -21,7 +21,7 @@ export function CampoCodigo({ valor, onCambio, autoFocus }) {
       placeholder="000000"
       value={valor}
       onChange={(e) => onCambio(e.target.value.replace(/\D/g, ''))}
-      className="cifras w-full rounded-xl border-0 bg-white px-4 py-3 text-center text-2xl font-bold tracking-[0.5em] ring-1 ring-slate-200 focus:outline-none focus:ring-2 focus:ring-marca-500 dark:bg-slate-900 dark:ring-slate-700"
+      className="cifras w-full rounded-xl border-0 bg-white px-4 py-3 text-center text-2xl font-bold tracking-[0.5em] ring-1 ring-slate-200 focus:outline-none focus:ring-2 focus:ring-marca-500"
     />
   )
 }
@@ -49,7 +49,7 @@ export function PasoCodigo({ token2fa, onListo, onCancelar }) {
 
   return (
     <form onSubmit={verificar} className="space-y-5">
-      <div className="grid h-14 w-14 place-items-center rounded-2xl bg-marca-50 text-2xl text-marca-700 dark:bg-marca-950 dark:text-marca-300">🔒</div>
+      <div className="grid h-14 w-14 place-items-center rounded-2xl bg-marca-50 text-2xl text-marca-700">🔒</div>
       <div>
         <h2 className="text-2xl font-bold tracking-tight">Verificación en dos pasos</h2>
         <p className="mt-1 text-sm text-slate-500">Abre tu app autenticadora (Google Authenticator) y escribe el código de 6 dígitos.</p>
@@ -126,7 +126,7 @@ export function ConfigurarDosPasos() {
           <p className="text-sm text-slate-500">Además de tu contraseña, te pediremos un código que solo tu celular genera.</p>
         </div>
         <span className={`rounded-full px-2.5 py-1 text-xs font-semibold ${
-          estado.activo ? 'bg-marca-50 text-marca-700 dark:bg-marca-950 dark:text-marca-300' : 'bg-slate-100 text-slate-500 dark:bg-slate-800'
+          estado.activo ? 'bg-marca-50 text-marca-700' : 'bg-slate-100 text-slate-500'
         }`}>
           {estado.activo ? 'Activa' : 'Inactiva'}
         </span>
@@ -156,7 +156,7 @@ export function ConfigurarDosPasos() {
         <form onSubmit={confirmar} className="grid gap-5 md:grid-cols-[200px_1fr]">
           <div className="rounded-xl bg-white p-2 ring-1 ring-slate-200" dangerouslySetInnerHTML={{ __html: qr.qr_svg }} />
           <div className="space-y-3 text-sm">
-            <ol className="list-decimal space-y-1 pl-4 text-slate-600 dark:text-slate-300">
+            <ol className="list-decimal space-y-1 pl-4 text-slate-600">
               <li>Instala Google Authenticator (o Microsoft Authenticator) en tu celular.</li>
               <li>Toca “+” y escanea este código.</li>
               <li>Escribe aquí el código de 6 dígitos que aparece.</li>
