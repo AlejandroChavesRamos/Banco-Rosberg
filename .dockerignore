@@ -1,0 +1,10 @@
+# La imagen de nginx se construye desde la raiz del proyecto: nunca enviar
+# secretos ni carpetas pesadas al proceso de construccion.
+.env
+.git
+GUIA.md
+**/node_modules
+**/dist
+**/__pycache__
+backend
+db

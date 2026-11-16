@@ -112,9 +112,10 @@ def _reglas_mysql(conn, ctx: ContextoOperacion, acc: Acumulador) -> None:
     if acc.activa("DISPOSITIVO_NUEVO") and ctx.dispositivo_id and ctx.usuario_id:
         # Nuevo = visto por primera vez hace menos de 24 h, en un cliente que YA
         # tenia otro dispositivo de antes. (El primer celular de un cliente nuevo no cuenta.)
+        # Si el cliente ya dijo "fui yo" (dispositivo confiable), no se sospecha de el
         fila = consultar_uno(
             conn,
-            "SELECT (d.primera_vez > NOW() - INTERVAL 1 DAY) AS reciente, "
+            "SELECT (d.primera_vez > NOW() - INTERVAL 1 DAY AND NOT d.confiable) AS reciente, "
             "(SELECT COUNT(*) FROM dispositivos o WHERE o.usuario_id = d.usuario_id AND o.id <> d.id "
             " AND o.primera_vez <= NOW() - INTERVAL 1 DAY) AS anteriores "
             "FROM dispositivos d WHERE d.id = %s",
@@ -189,9 +190,11 @@ def evaluar(conn, ctx: ContextoOperacion) -> Evaluacion:
     _reglas_mysql(conn, ctx, acc)
     try:
         _reglas_grafo(conn, ctx, acc)
+    except grafo.GrafoNoDisponible:
+        # Si el contenedor de Neo4j esta apagado, el banco sigue operando solo con
+        # las reglas de MySQL (se prefiere no detener los pagos de todos los clientes).
+        log.warning("Neo4j no disponible: operacion evaluada solo con las reglas de MySQL")
     except Exception:
-        # Si Neo4j no responde, el banco sigue operando solo con las reglas de
-        # MySQL (se prefiere no detener los pagos de todos los clientes).
-        log.exception("Reglas de grafo no disponibles; se evalua solo con MySQL")
+        log.exception("Error en las reglas de grafo; se evalua solo con MySQL")
     puntaje = acc.puntaje
     return Evaluacion(puntaje=puntaje, decision=decidir(conn, puntaje), motivos=acc.motivos)

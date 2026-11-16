@@ -9,6 +9,7 @@
 import { useEffect, useRef, useState } from 'react'
 import { Link, useLocation } from 'react-router-dom'
 import { api, nuevaClave } from '../api'
+import { CampoCodigo } from '../componentes/DosPasos'
 import { Aviso, Boton, Campo, Selector, Tarjeta } from '../componentes/ui'
 import { cop, enmascarar } from '../formato'
 
@@ -25,6 +26,8 @@ export default function Transferir() {
   const [resultado, setResultado] = useState(null)
   const [error, setError] = useState('')
   const [cargando, setCargando] = useState(false)
+  const [pideCodigo, setPideCodigo] = useState(false) // el banco exige 2FA para este monto
+  const [codigo2fa, setCodigo2fa] = useState('')
 
   useEffect(() => {
     api.get('/cuentas').then((lista) => {
@@ -65,10 +68,15 @@ export default function Transferir() {
     setError('')
     setCargando(true)
     try {
-      const r = await api.post('/transferencias', { cuenta_origen: origen, destino: destino.trim(), monto: Number(monto) }, { clave })
+      const cuerpo = { cuenta_origen: origen, destino: destino.trim(), monto: Number(monto) }
+      if (pideCodigo) cuerpo.codigo_2fa = codigo2fa
+      const r = await api.post('/transferencias', cuerpo, { clave })
       setResultado(r)
       setPaso(3)
     } catch (e) {
+      // 428: el banco exige el codigo de la app autenticadora para este monto
+      if (e.status === 428) setPideCodigo(true)
+      setCodigo2fa('')
       setError(e.message)
     } finally {
       setCargando(false)
@@ -77,6 +85,8 @@ export default function Transferir() {
 
   function otraTransferencia() {
     setPaso(1)
+    setPideCodigo(false)
+    setCodigo2fa('')
     setDestino('')
     setMonto('')
     setDestinatario(null)
@@ -136,10 +146,16 @@ export default function Transferir() {
               <p className="text-sm text-slate-500">
                 Verifica que el nombre corresponda a la persona. Por tu seguridad solo mostramos parte del nombre.
               </p>
-              <Aviso>{error}</Aviso>
+              {pideCodigo && (
+                <div className="max-w-xs space-y-2">
+                  <div className="text-sm font-medium">Código de tu app autenticadora</div>
+                  <CampoCodigo valor={codigo2fa} onCambio={setCodigo2fa} autoFocus />
+                </div>
+              )}
+              <Aviso tipo={pideCodigo && error.startsWith('Escribe') ? 'advertencia' : 'error'}>{error}</Aviso>
               <div className="flex gap-3">
                 <Boton variante="secundario" onClick={() => setPaso(1)} disabled={cargando}>Volver</Boton>
-                <Boton onClick={confirmar} cargando={cargando}>Confirmar envío</Boton>
+                <Boton onClick={confirmar} cargando={cargando} disabled={pideCodigo && codigo2fa.length !== 6}>Confirmar envío</Boton>
               </div>
             </Tarjeta>
           )}

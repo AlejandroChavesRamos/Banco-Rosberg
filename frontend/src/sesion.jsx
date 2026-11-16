@@ -14,6 +14,8 @@ function datosUsuario(respuesta) {
     nombre: respuesta.nombre,
     rol: respuesta.rol,
     debeCambiar: respuesta.debe_cambiar_password,
+    debeConfigurar2fa: respuesta.debe_configurar_2fa,
+    tiene2fa: respuesta.tiene_2fa,
   }
 }
 
@@ -54,11 +56,28 @@ export function SesionProvider({ portal, children }) {
     renovar().finally(() => setCargando(false))
   }, [portal])
 
+  // Paso 1 del login. Si el usuario tiene verificacion en dos pasos, el
+  // backend NO entrega la sesion: devuelve { requiere_2fa, token_2fa } y la
+  // pantalla debe pedir el codigo (paso 2).
   async function iniciarSesion(email, password) {
     const r = await api.post('/auth/login', { email, password, portal }, { sinRenovar: true })
+    if (r.requiere_2fa) return r
     guardarToken(r.access_token)
     setUsuario(datosUsuario(r))
     return r
+  }
+
+  // Paso 2 del login: el codigo de 6 digitos de la app autenticadora
+  async function verificarCodigo(token2fa, codigo) {
+    const r = await api.post('/auth/2fa/verificar', { token_2fa: token2fa, codigo }, { sinRenovar: true })
+    guardarToken(r.access_token)
+    setUsuario(datosUsuario(r))
+    return r
+  }
+
+  // Tras activar el 2FA, refrescar los datos del usuario
+  function marcar2faActivo() {
+    setUsuario((u) => ({ ...u, tiene2fa: true, debeConfigurar2fa: false }))
   }
 
   async function cerrarSesion() {
@@ -72,7 +91,9 @@ export function SesionProvider({ portal, children }) {
   }
 
   return (
-    <SesionContexto.Provider value={{ portal, usuario, cargando, iniciarSesion, cerrarSesion, renovar }}>
+    <SesionContexto.Provider
+      value={{ portal, usuario, cargando, iniciarSesion, verificarCodigo, marcar2faActivo, cerrarSesion, renovar }}
+    >
       {children}
     </SesionContexto.Provider>
   )

@@ -1,6 +1,7 @@
 // Pantalla de inicio de sesion de la App Rosberg
 import { useState } from 'react'
 import { Link, Navigate, useNavigate } from 'react-router-dom'
+import { PasoCodigo } from '../componentes/DosPasos'
 import { Aviso, Boton, Campo, Logo, PantallaCargando } from '../componentes/ui'
 import { useSesion } from '../sesion'
 import MarcoPublico from './MarcoPublico'
@@ -13,9 +14,14 @@ export default function Login() {
   const [password, setPassword] = useState('')
   const [error, setError] = useState('')
   const [enviando, setEnviando] = useState(false)
+  const [token2fa, setToken2fa] = useState(null) // si llega, falta el codigo del celular
 
   if (cargando) return <PantallaCargando />
   if (usuario) return <Navigate to="/app" replace />
+
+  function irAlInicio(r) {
+    navegar(r.debe_cambiar_password ? '/app/cambiar-clave' : '/app')
+  }
 
   async function entrar(evento) {
     evento.preventDefault() // evita que el navegador recargue la pagina
@@ -23,12 +29,21 @@ export default function Login() {
     setEnviando(true)
     try {
       const r = await iniciarSesion(email, password)
-      navegar(r.debe_cambiar_password ? '/app/cambiar-clave' : '/app')
+      if (r.requiere_2fa) setToken2fa(r.token_2fa) // mostrar el paso 2
+      else irAlInicio(r)
     } catch (e) {
       setError(e.message)
     } finally {
       setEnviando(false)
     }
+  }
+
+  if (token2fa) {
+    return (
+      <MarcoPublico>
+        <PasoCodigo token2fa={token2fa} onListo={irAlInicio} onCancelar={() => { setToken2fa(null); setPassword('') }} />
+      </MarcoPublico>
+    )
   }
 
   return (

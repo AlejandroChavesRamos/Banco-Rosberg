@@ -6,7 +6,7 @@ from fastapi import APIRouter, Depends, Query, Request
 
 from ..db.mysql import consultar, consultar_uno, ejecutar, llamar_sp, obtener_conexion
 from ..errores import ErrorNegocio
-from ..esquemas import EmpleadoEntrada, EstadoEmpleado, ReglaCambio
+from ..esquemas import CambioConfiguracion, EmpleadoEntrada, EstadoEmpleado, ReglaCambio
 from ..seguridad import contrasenas
 from ..seguridad.dependencias import UsuarioActual, requiere_rol
 from ..servicios import auditoria, grafo
@@ -80,6 +80,33 @@ def cambiar_regla(codigo: str, datos: ReglaCambio, request: Request,
                         detalle={"codigo": codigo, "antes": {k: anterior[k] for k in cambios}, "despues": cambios},
                         ip=ip_cliente(request))
     return consultar_uno(conn, "SELECT * FROM reglas_fraude WHERE codigo = %s", (codigo,))
+
+
+# Solo estas claves se pueden cambiar desde la Intranet (lista blanca)
+_CONFIG_EDITABLE = {
+    "2FA_EMPLEADOS": "interruptor",
+    "2FA_CLIENTES": "interruptor",
+    "2FA_TRANSFERENCIAS": "interruptor",
+    "MONTO_2FA": "numero",
+}
+
+
+@router.patch("/configuracion/{clave}", summary="Cambiar un interruptor o valor de seguridad")
+def cambiar_configuracion(clave: str, datos: CambioConfiguracion, request: Request,
+                          u: UsuarioActual = Depends(admin), conn=Depends(obtener_conexion)):
+    tipo = _CONFIG_EDITABLE.get(clave)
+    if not tipo:
+        raise ErrorNegocio(404, "Esa configuracion no se puede cambiar desde aqui")
+    if tipo == "interruptor" and datos.valor not in ("0", "1"):
+        raise ErrorNegocio(400, "Un interruptor solo puede valer 0 (apagado) o 1 (encendido)")
+    if tipo == "numero" and (not datos.valor.isdigit() or int(datos.valor) < 1000):
+        raise ErrorNegocio(400, "Debe ser un monto entero de al menos 1000")
+    anterior = consultar_uno(conn, "SELECT valor FROM configuracion WHERE clave = %s", (clave,))
+    ejecutar(conn, "UPDATE configuracion SET valor = %s WHERE clave = %s", (datos.valor, clave))
+    auditoria.registrar(conn, "CAMBIAR_CONFIGURACION", "configuracion", None, usuario_id=u.id,
+                        detalle={"clave": clave, "antes": anterior["valor"] if anterior else None,
+                                 "despues": datos.valor}, ip=ip_cliente(request))
+    return {"clave": clave, "valor": datos.valor}
 
 
 @router.get("/auditoria", summary="Ultimos registros de auditoria")

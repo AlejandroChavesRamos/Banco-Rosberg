@@ -4,6 +4,7 @@
 import { useState } from 'react'
 import { Navigate, NavLink, Outlet, Route, Routes, useLocation, useNavigate } from 'react-router-dom'
 import CambiarClave from '../cliente/CambiarClave'
+import { ConfigurarDosPasos, PasoCodigo } from '../componentes/DosPasos'
 import { Aviso, Boton, BotonTema, Campo, Logo, PantallaCargando, Tarjeta } from '../componentes/ui'
 import { useSesion } from '../sesion'
 import Alertas from './Alertas'
@@ -23,6 +24,7 @@ const MENU = [
   { a: '/intranet/empleados', texto: 'Empleados', icono: '☺', roles: ['admin'] },
   { a: '/intranet/reglas', texto: 'Reglas antifraude', icono: '⚙', roles: ['admin'] },
   { a: '/intranet/auditoria', texto: 'Auditoría', icono: '⛓', roles: ['admin'] },
+  { a: '/intranet/seguridad', texto: 'Mi seguridad', icono: '🔒', roles: ['cajero', 'analista', 'admin'] },
 ]
 
 const NOMBRE_ROL = { cajero: 'Cajero', analista: 'Analista de fraude', admin: 'Administrador' }
@@ -42,6 +44,15 @@ export default function Intranet() {
         <Route path="reglas" element={<Reglas />} />
         <Route path="auditoria" element={<Auditoria />} />
         <Route path="cambiar-clave" element={<div className="max-w-md"><CambiarClave /></div>} />
+        <Route
+          path="seguridad"
+          element={
+            <div className="max-w-2xl space-y-6">
+              <h1 className="text-2xl font-bold tracking-tight">Mi seguridad</h1>
+              <ConfigurarDosPasos />
+            </div>
+          }
+        />
       </Route>
     </Routes>
   )
@@ -63,12 +74,17 @@ function Marco() {
   if (usuario.debeCambiar && ubicacion.pathname !== '/intranet/cambiar-clave') {
     return <Navigate to="/intranet/cambiar-clave" replace />
   }
+  // El admin exige 2FA a empleados y este aun no lo configura
+  if (!usuario.debeCambiar && usuario.debeConfigurar2fa && ubicacion.pathname !== '/intranet/seguridad') {
+    return <Navigate to="/intranet/seguridad" replace />
+  }
 
   async function salir() {
     await cerrarSesion()
     navegar('/intranet/login')
   }
 
+  const bloqueado = usuario.debeCambiar || usuario.debeConfigurar2fa
   const opciones = MENU.filter((m) => m.roles.includes(usuario.rol))
 
   return (
@@ -79,7 +95,7 @@ function Marco() {
           <Logo subtitulo="Intranet" />
         </div>
         <nav className="mt-8 flex-1 space-y-1">
-          {!usuario.debeCambiar &&
+          {!bloqueado &&
             opciones.map((m) => (
               <NavLink
                 key={m.a}
@@ -124,9 +140,14 @@ function LoginIntranet() {
   const [password, setPassword] = useState('')
   const [error, setError] = useState('')
   const [enviando, setEnviando] = useState(false)
+  const [token2fa, setToken2fa] = useState(null)
 
   if (cargando) return <PantallaCargando />
   if (usuario) return <Navigate to="/intranet" replace />
+
+  function entrarAlPanel(r) {
+    navegar(r.debe_cambiar_password ? '/intranet/cambiar-clave' : '/intranet')
+  }
 
   async function entrar(evento) {
     evento.preventDefault()
@@ -134,7 +155,8 @@ function LoginIntranet() {
     setEnviando(true)
     try {
       const r = await iniciarSesion(email, password)
-      navegar(r.debe_cambiar_password ? '/intranet/cambiar-clave' : '/intranet')
+      if (r.requiere_2fa) setToken2fa(r.token_2fa)
+      else entrarAlPanel(r)
     } catch (e) {
       setError(e.message)
     } finally {
@@ -149,6 +171,11 @@ function LoginIntranet() {
           <Logo subtitulo="Intranet · uso exclusivo de empleados" />
           <BotonTema />
         </div>
+        {token2fa ? (
+          <Tarjeta>
+            <PasoCodigo token2fa={token2fa} onListo={entrarAlPanel} onCancelar={() => { setToken2fa(null); setPassword('') }} />
+          </Tarjeta>
+        ) : (
         <Tarjeta>
           <form onSubmit={entrar} className="space-y-4">
             <Campo etiqueta="Correo corporativo" type="email" required autoComplete="username"
@@ -159,6 +186,7 @@ function LoginIntranet() {
             <Boton type="submit" cargando={enviando} className="w-full">Ingresar</Boton>
           </form>
         </Tarjeta>
+        )}
         <p className="mt-4 text-center text-xs text-slate-500">
           Toda actividad en la Intranet queda registrada en la auditoría.
         </p>

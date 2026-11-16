@@ -97,6 +97,14 @@ services:
       - ./db/neo4j:/scripts/neo4j:ro
     ports:
       - "127.0.0.1:8000:8000"
+    # Docker pregunta cada 15 s si la API responde. /salud contesta aunque una
+    # base este caida: la API sigue "sana" y avisa que esta "degradada".
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/salud', timeout=5)"]
+      interval: 15s
+      timeout: 10s
+      retries: 3
+      start_period: 20s
     depends_on:
       mysql:
         condition: service_healthy
@@ -115,9 +123,17 @@ services:
       # El codigo se monta para que los cambios se vean al guardar;
       # node_modules se queda dentro del contenedor.
       - ./frontend/src:/codigo/src
+      - ./frontend/public:/codigo/public
       - ./frontend/index.html:/codigo/index.html
     ports:
       - "127.0.0.1:5173:5173"
+    healthcheck:
+      # 127.0.0.1 y no "localhost": dentro del contenedor localhost apunta a IPv6 y Vite escucha en IPv4
+      test: ["CMD-SHELL", "wget -q -O /dev/null http://127.0.0.1:5173/app || exit 1"]
+      interval: 15s
+      timeout: 5s
+      retries: 3
+      start_period: 15s
     depends_on:
       - backend
     networks:

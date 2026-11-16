@@ -15,12 +15,13 @@ CREATE USER IF NOT EXISTS '${APP_DB_USER}'@'%' IDENTIFIED BY '${APP_DB_PASSWORD}
 -- No puede cambiar el rol, el email ni la cedula de nadie (evita escalar privilegios).
 GRANT SELECT, INSERT ON ${MYSQL_DATABASE}.usuarios TO '${APP_DB_USER}'@'%';
 GRANT UPDATE (password_hash, intentos_fallidos, bloqueado_hasta, debe_cambiar_password,
-              activo, totp_secreto_cifrado, totp_activo)
+              activo, totp_secreto_cifrado, totp_activo, totp_ultimo_paso)
       ON ${MYSQL_DATABASE}.usuarios TO '${APP_DB_USER}'@'%';
 
 -- Dispositivos, sesiones, llaves y codigos de retiro: leer, crear y actualizar (nunca borrar)
 GRANT SELECT, INSERT, UPDATE ON ${MYSQL_DATABASE}.dispositivos   TO '${APP_DB_USER}'@'%';
 GRANT SELECT, INSERT, UPDATE ON ${MYSQL_DATABASE}.sesiones       TO '${APP_DB_USER}'@'%';
+GRANT SELECT, INSERT, UPDATE ON ${MYSQL_DATABASE}.avisos_login   TO '${APP_DB_USER}'@'%';
 GRANT SELECT, INSERT, UPDATE ON ${MYSQL_DATABASE}.llaves         TO '${APP_DB_USER}'@'%';
 GRANT SELECT, INSERT, UPDATE ON ${MYSQL_DATABASE}.codigos_retiro TO '${APP_DB_USER}'@'%';
 GRANT SELECT, INSERT, UPDATE ON ${MYSQL_DATABASE}.alertas_fraude TO '${APP_DB_USER}'@'%';

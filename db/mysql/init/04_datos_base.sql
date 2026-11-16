@@ -26,4 +26,8 @@ INSERT INTO configuracion (clave, valor, descripcion) VALUES
 ('RETIRO_MAXIMO',   '2000000','Monto maximo de un codigo de retiro (COP)'),
 ('VIGENCIA_CODIGO_RETIRO','30','Minutos de validez de un codigo de retiro'),
 ('INTENTOS_CODIGO_RETIRO','3','Intentos fallidos antes de bloquear un codigo de retiro'),
-('MAX_CUENTAS_CLIENTE','3',  'Cuentas maximas por cliente');
+('MAX_CUENTAS_CLIENTE','3',  'Cuentas maximas por cliente'),
+-- Interruptores de verificacion en dos pasos (1 = encendido, 0 = apagado)
+('2FA_EMPLEADOS',      '0',  'Exigir verificacion en dos pasos a todos los empleados'),
+('2FA_CLIENTES',       '0',  'Permitir que los clientes activen la verificacion en dos pasos'),
+('2FA_TRANSFERENCIAS', '0',  'Exigir el codigo 2FA en transferencias desde MONTO_2FA');

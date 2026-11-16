@@ -37,6 +37,10 @@ class Settings(BaseSettings):
 
     # Solo desarrollo: usar la IP de X-Forwarded-For (ver docker-compose.yml)
     confiar_x_forwarded_for: bool = False
+    # Produccion: nombre del proxy (nginx) del que SI se acepta la cabecera X-Real-IP
+    proxy_confiable: str = ""
+    # Produccion: oculta /docs y otros detalles internos
+    produccion: bool = False
 
     # Simulador (Fase 3)
     api_url: str = "http://backend:8000"

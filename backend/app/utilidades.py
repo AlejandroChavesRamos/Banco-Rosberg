@@ -1,20 +1,44 @@
 """Funciones auxiliares sobre la peticion HTTP."""
 import hashlib
+import socket
+import time
 
 from fastapi import Request
 
 from .config import settings
 
+_ip_proxy = {"ip": None, "revisado": 0.0}
+
+
+def _es_proxy_confiable(ip: str) -> bool:
+    """La peticion viene de nginx? (se resuelve su IP en la red de Docker)."""
+    if not settings.proxy_confiable:
+        return False
+    if time.time() - _ip_proxy["revisado"] > 60:   # se vuelve a resolver cada minuto
+        try:
+            _ip_proxy["ip"] = socket.gethostbyname(settings.proxy_confiable)
+        except OSError:
+            _ip_proxy["ip"] = None
+        _ip_proxy["revisado"] = time.time()
+    return ip == _ip_proxy["ip"]
+
 
 def ip_cliente(request: Request) -> str:
-    # X-Forwarded-For la puede escribir cualquiera, por eso solo se usa si se
-    # activo a proposito (desarrollo/simulador). En la Fase 6 solo se confiara
-    # en la que agregue nginx.
+    """IP real del cliente.
+
+    Las cabeceras X-Forwarded-For / X-Real-IP las puede escribir CUALQUIERA,
+    asi que solo se creen en dos casos:
+      - Produccion: si la peticion viene de nginx (que pone X-Real-IP con la IP real).
+      - Desarrollo: si se activo CONFIAR_X_FORWARDED_FOR (lo usa el simulador).
+    """
+    directa = request.client.host if request.client else "desconocida"
+    if _es_proxy_confiable(directa):
+        return (request.headers.get("x-real-ip") or directa)[:45]
     if settings.confiar_x_forwarded_for:
         reenviada = request.headers.get("x-forwarded-for")
         if reenviada:
             return reenviada.split(",")[0].strip()[:45]
-    return request.client.host if request.client else "desconocida"
+    return directa
 
 
 def huella_dispositivo(request: Request) -> tuple[str, str]:

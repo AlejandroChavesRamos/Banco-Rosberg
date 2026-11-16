@@ -45,6 +45,21 @@ def crear_refresh(usuario_id: int, jti: str) -> str:
     return jwt.encode(datos, settings.jwt_secreto, algorithm=_ALGORITMO)
 
 
+def crear_paso_2fa(usuario_id: int, portal: str) -> str:
+    """Token de 5 minutos que solo sirve para el segundo paso del login
+    (la contrasena ya fue correcta, falta el codigo del celular)."""
+    ahora = _ahora()
+    datos = {
+        "sub": str(usuario_id),
+        "tipo": "2fa",
+        "portal": portal,
+        "iat": ahora,
+        "exp": ahora + timedelta(minutes=5),
+        "jti": str(uuid.uuid4()),
+    }
+    return jwt.encode(datos, settings.jwt_secreto, algorithm=_ALGORITMO)
+
+
 def decodificar(token: str, tipo_esperado: str) -> dict:
     """Valida firma, vencimiento y tipo.
 

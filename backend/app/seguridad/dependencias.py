@@ -11,6 +11,7 @@ from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from pydantic import BaseModel
 
 from ..db.mysql import consultar_uno, obtener_conexion
+from . import doble_factor
 from .tokens import decodificar
 
 _bearer = HTTPBearer(auto_error=False, description="Pega aqui el access_token del login")
@@ -22,6 +23,8 @@ class UsuarioActual(BaseModel):
     nombre: str
     email: str
     debe_cambiar_password: bool
+    tiene_2fa: bool = False
+    debe_configurar_2fa: bool = False
 
 
 def usuario_actual(
@@ -34,7 +37,7 @@ def usuario_actual(
     datos = decodificar(cred.credentials, "access")
     fila = consultar_uno(
         conn,
-        "SELECT id, rol, nombre, email, activo, debe_cambiar_password "
+        "SELECT id, rol, nombre, email, activo, debe_cambiar_password, totp_activo "
         "FROM usuarios WHERE id = %s",
         (int(datos["sub"]),),
     )
@@ -44,6 +47,8 @@ def usuario_actual(
     return UsuarioActual(
         id=fila["id"], rol=fila["rol"], nombre=fila["nombre"], email=fila["email"],
         debe_cambiar_password=bool(fila["debe_cambiar_password"]),
+        tiene_2fa=bool(fila["totp_activo"]),
+        debe_configurar_2fa=doble_factor.debe_configurar(conn, fila["rol"], bool(fila["totp_activo"])),
     )
 
 
@@ -52,6 +57,9 @@ def requiere_rol(*roles: str):
         if u.debe_cambiar_password:
             raise HTTPException(status.HTTP_403_FORBIDDEN,
                                 "Debe cambiar su contrasena temporal en /auth/cambiar-password")
+        if u.debe_configurar_2fa:
+            raise HTTPException(status.HTTP_403_FORBIDDEN,
+                                "El banco exige verificacion en dos pasos: configurela antes de continuar")
         if u.rol not in roles:
             raise HTTPException(status.HTTP_403_FORBIDDEN, "No tiene permiso para esta operacion")
         return u

@@ -38,10 +38,12 @@ export default function Reglas() {
         ))}
       </div>
 
+      <Interruptores configuracion={configuracion} onCambio={(texto, tipo = 'exito') => { setMensaje({ tipo, texto }); cargar() }} />
+
       <Tarjeta>
         <h2 className="mb-3 font-semibold">Umbrales de decisión</h2>
         <div className="grid gap-2 text-sm sm:grid-cols-2">
-          {configuracion.map((c) => (
+          {configuracion.filter((c) => !c.clave.startsWith('2FA') && c.clave !== 'MONTO_2FA').map((c) => (
             <div key={c.clave} className="flex justify-between gap-4 border-b border-slate-100 py-1.5 dark:border-slate-800">
               <span className="text-slate-500">{c.descripcion}</span>
               <span className="cifras font-semibold">{Number(c.valor).toLocaleString('es-CO')}</span>
@@ -50,6 +52,72 @@ export default function Reglas() {
         </div>
       </Tarjeta>
     </div>
+  )
+}
+
+// Interruptores de verificacion en dos pasos (cada cambio queda en la auditoria)
+const INTERRUPTORES = [
+  ['2FA_EMPLEADOS', 'Obligatoria para empleados', 'Todos los empleados deberán vincular su app autenticadora y dar el código al entrar.'],
+  ['2FA_CLIENTES', 'Permitir a clientes', 'Aparece en la App la opción de activar la verificación en dos pasos.'],
+  ['2FA_TRANSFERENCIAS', 'Exigir en envíos grandes', 'Los clientes deben dar el código para transferir desde el monto indicado.'],
+]
+
+function Interruptores({ configuracion, onCambio }) {
+  const valor = (clave) => configuracion.find((c) => c.clave === clave)?.valor
+  const [monto, setMonto] = useState('')
+  const [guardando, setGuardando] = useState(null)
+
+  async function cambiar(clave, nuevo) {
+    if (clave === '2FA_EMPLEADOS' && nuevo === '1' &&
+        !confirm('Todos los empleados (incluido tú) deberán configurar Google Authenticator antes de seguir trabajando. ¿Continuar?')) return
+    setGuardando(clave)
+    try {
+      await api.patch(`/admin/configuracion/${clave}`, { valor: nuevo })
+      onCambio(`${clave} ${nuevo === '1' ? 'encendido' : nuevo === '0' ? 'apagado' : 'actualizado'}`)
+    } catch (e) {
+      onCambio(e.message, 'error')
+    } finally {
+      setGuardando(null)
+    }
+  }
+
+  return (
+    <Tarjeta className="space-y-4">
+      <div>
+        <h2 className="font-semibold">Verificación en dos pasos (2FA)</h2>
+        <p className="text-sm text-slate-500">Código de Google Authenticator además de la contraseña.</p>
+      </div>
+      {INTERRUPTORES.map(([clave, titulo, ayuda]) => {
+        const encendido = valor(clave) === '1'
+        return (
+          <div key={clave} className="flex items-center justify-between gap-4 border-b border-slate-100 pb-3 dark:border-slate-800">
+            <div>
+              <div className="text-sm font-medium">{titulo}</div>
+              <div className="text-xs text-slate-500">{ayuda}</div>
+            </div>
+            <button
+              onClick={() => cambiar(clave, encendido ? '0' : '1')}
+              disabled={guardando === clave}
+              className={`relative h-6 w-11 shrink-0 rounded-full transition ${encendido ? 'bg-marca-600' : 'bg-slate-300 dark:bg-slate-700'}`}
+              title={encendido ? 'Apagar' : 'Encender'}
+            >
+              <span className={`absolute top-0.5 h-5 w-5 rounded-full bg-white shadow transition ${encendido ? 'left-[22px]' : 'left-0.5'}`} />
+            </button>
+          </div>
+        )
+      })}
+      <div className="flex flex-wrap items-end gap-3">
+        <label className="text-sm">
+          <span className="mb-1 block text-slate-500">Monto desde el que se exige en envíos (actual: ${Number(valor('MONTO_2FA') ?? 0).toLocaleString('es-CO')})</span>
+          <input type="number" min="1000" step="1000" value={monto} onChange={(e) => setMonto(e.target.value)}
+                 className="w-48 rounded-lg border-0 bg-white px-3 py-1.5 ring-1 ring-slate-200 dark:bg-slate-900 dark:ring-slate-700" />
+        </label>
+        <Boton variante="secundario" disabled={!monto} cargando={guardando === 'MONTO_2FA'}
+               onClick={() => { cambiar('MONTO_2FA', String(Math.round(Number(monto)))); setMonto('') }}>
+          Guardar monto
+        </Boton>
+      </div>
+    </Tarjeta>
   )
 }
 

@@ -5,6 +5,12 @@ MySQL, se refleja en el grafo. Si Neo4j falla, la operacion de dinero NO se
 revierte: se registra el error y luego se puede reconstruir el grafo completo
 con `python -m app.cli resincronizar-grafo`.
 
+TOLERANCIA A FALLOS (si el contenedor de Neo4j se apaga):
+  - "Cortacircuitos": tras un fallo, durante 15 s ni se intenta conectar (el
+    banco no se pone lento esperando a una base caida).
+  - Se cuentan las escrituras perdidas. Cuando Neo4j vuelve, el grafo se
+    reconstruye SOLO desde MySQL, en segundo plano (auto-curacion).
+
 Modelo:
   (:Cliente)-[:TITULAR_DE]->(:Cuenta)
   (:Cliente)-[:USA]->(:Dispositivo)
@@ -12,6 +18,8 @@ Modelo:
   (:Cuenta)-[:TRANSFIERE {tx_id, monto, fecha, estado}]->(:Cuenta)
 """
 import logging
+import threading
+import time
 from datetime import datetime, timezone
 from pathlib import Path
 from zoneinfo import ZoneInfo
@@ -24,12 +32,27 @@ from ..db.mysql import consultar
 log = logging.getLogger("banco.grafo")
 _driver = None
 
+PAUSA_TRAS_FALLO = 15   # segundos sin intentar conectar despues de un fallo
+
+# Estado compartido de la conexion con Neo4j
+_estado = {"caido_hasta": 0.0, "pendientes": 0, "resincronizando": False}
+_candado = threading.Lock()
+
+
+class GrafoNoDisponible(Exception):
+    """Neo4j esta apagado o no responde."""
+
 
 def driver():
     global _driver
     if _driver is None:
-        _driver = GraphDatabase.driver(settings.neo4j_uri,
-                                       auth=(settings.neo4j_user, settings.neo4j_password))
+        _driver = GraphDatabase.driver(
+            settings.neo4j_uri,
+            auth=(settings.neo4j_user, settings.neo4j_password),
+            connection_timeout=2,              # no esperar 30 s a una base apagada
+            connection_acquisition_timeout=3,
+            max_transaction_retry_time=1,
+        )
     return _driver
 
 
@@ -40,17 +63,71 @@ def cerrar() -> None:
         _driver = None
 
 
+def disponible() -> bool:
+    return time.time() >= _estado["caido_hasta"]
+
+
+def estado() -> dict:
+    return {"pendientes": _estado["pendientes"], "resincronizando": _estado["resincronizando"]}
+
+
+def _registrar_caida(error: Exception) -> None:
+    _estado["caido_hasta"] = time.time() + PAUSA_TRAS_FALLO
+    log.warning("Neo4j no disponible (%s). Se reintentara en %s s.", type(error).__name__, PAUSA_TRAS_FALLO)
+
+
 def consultar_grafo(cypher: str, **params) -> list[dict]:
-    """Lectura del grafo (la usara el motor antifraude en la Fase 4)."""
-    registros, _, _ = driver().execute_query(cypher, params, database_="neo4j")
+    """Lectura del grafo. Si Neo4j esta caido lanza GrafoNoDisponible (rapido)."""
+    if not disponible():
+        raise GrafoNoDisponible()
+    try:
+        registros, _, _ = driver().execute_query(cypher, params, database_="neo4j")
+    except Exception as e:
+        _registrar_caida(e)
+        raise GrafoNoDisponible() from e
+    _al_recuperarse()
     return [r.data() for r in registros]
 
 
 def _escribir(cypher: str, **params) -> None:
+    """Escritura de sincronizacion. Nunca interrumpe la operacion de dinero."""
+    if not disponible():
+        _estado["pendientes"] += 1
+        return
     try:
         driver().execute_query(cypher, params, database_="neo4j")
-    except Exception:
-        log.exception("No se pudo sincronizar con Neo4j (MySQL sigue siendo la fuente de verdad)")
+    except Exception as e:
+        _estado["pendientes"] += 1
+        _registrar_caida(e)
+        return
+    _al_recuperarse()
+
+
+def _al_recuperarse() -> None:
+    """Si hubo escrituras perdidas mientras Neo4j estaba caido, reconstruir el
+    grafo desde MySQL en segundo plano (el usuario no espera)."""
+    if _estado["pendientes"] == 0:
+        return
+    with _candado:
+        if _estado["resincronizando"]:
+            return
+        _estado["resincronizando"] = True
+
+    def _tarea():
+        from ..db.mysql import conectar   # conexion propia: el hilo vive fuera de la peticion
+        conn = conectar()
+        try:
+            perdidas = _estado["pendientes"]
+            resultado = resincronizar(conn)
+            _estado["pendientes"] = max(0, _estado["pendientes"] - perdidas)
+            log.info("Grafo reconstruido tras la caida de Neo4j: %s", resultado)
+        except Exception:
+            log.exception("No se pudo reconstruir el grafo; se reintentara")
+        finally:
+            conn.close()
+            _estado["resincronizando"] = False
+
+    threading.Thread(target=_tarea, daemon=True).start()
 
 
 def _fecha(valor: datetime) -> datetime:

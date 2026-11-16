@@ -1,0 +1,54 @@
+# =====================================================================
+# Banco Rosberg - modo PRODUCCION
+#
+# Se usa JUNTO con docker-compose.yml y cambia solo lo necesario:
+#   docker compose down
+#   docker compose -f docker-compose.yml -f docker-compose.prod.yml up -d --build
+# Abrir: https://localhost/app  y  https://localhost/intranet
+#
+# Diferencias con desarrollo:
+#   - Unica puerta: nginx con HTTPS (443). MySQL, Neo4j y el backend NO se
+#     publican en tu PC (Workbench no se puede conectar en este modo).
+#   - Las pantallas se compilan y las sirve nginx (sin Vite).
+#   - Backend sin recarga automatica, sin /docs, cookie solo por HTTPS y
+#     solo confia en la IP que le pasa nginx.
+# =====================================================================
+services:
+  mysql:
+    ports: !reset []
+
+  neo4j:
+    ports: !reset []
+
+  backend:
+    command: uvicorn app.main:app --host 0.0.0.0 --port 8000 --workers 2
+    ports: !reset []
+    volumes: !override
+      - ./db/neo4j:/scripts/neo4j:ro           # sin montar el codigo: se usa el de la imagen
+    environment:
+      PRODUCCION: "true"
+      COOKIE_SEGURA: "true"
+      CONFIAR_X_FORWARDED_FOR: "false"         # ya no se cree a cualquiera...
+      PROXY_CONFIABLE: nginx                   # ...solo a nginx
+
+  frontend:
+    profiles: ["solo-desarrollo"]              # en produccion no arranca (lo reemplaza nginx)
+
+  nginx:
+    build:
+      context: .
+      dockerfile: nginx/Dockerfile
+    container_name: banco_nginx
+    restart: unless-stopped
+    ports:
+      - "127.0.0.1:443:443"
+      - "127.0.0.1:80:80"
+    volumes:
+      - nginx_certs:/etc/nginx/certs
+    depends_on:
+      - backend
+    networks:
+      - red_interna
+
+volumes:
+  nginx_certs:

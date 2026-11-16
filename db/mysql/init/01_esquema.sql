@@ -19,6 +19,7 @@ CREATE TABLE usuarios (
     telefono_cifrado   VARBINARY(512) NULL,
     totp_secreto_cifrado VARBINARY(512) NULL,           -- secreto 2FA, tambien cifrado (Fase 6)
     totp_activo        BOOLEAN       NOT NULL DEFAULT FALSE,
+    totp_ultimo_paso   BIGINT        NULL,              -- ultimo codigo 2FA usado: impide reutilizarlo
     intentos_fallidos  TINYINT UNSIGNED NOT NULL DEFAULT 0,
     bloqueado_hasta    DATETIME      NULL,
     debe_cambiar_password BOOLEAN    NOT NULL DEFAULT FALSE,  -- clientes creados en ventanilla
@@ -73,6 +74,24 @@ CREATE TABLE dispositivos (
     CONSTRAINT uq_dispositivo_usuario UNIQUE (usuario_id, huella),
     CONSTRAINT fk_dispositivos_usuario FOREIGN KEY (usuario_id) REFERENCES usuarios(id),
     INDEX idx_dispositivos_huella (huella)               -- para buscar huellas compartidas
+) ENGINE=InnoDB;
+
+-- ---------------------------------------------------------------------
+-- Avisos de inicio de sesion sospechoso (dispositivo o IP nuevos).
+-- El cliente responde "fui yo" o "no fui yo" desde su App.
+-- ---------------------------------------------------------------------
+CREATE TABLE avisos_login (
+    id             BIGINT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+    usuario_id     BIGINT UNSIGNED NOT NULL,
+    dispositivo_id BIGINT UNSIGNED NULL,
+    ip             VARCHAR(45)  NOT NULL,
+    motivo         VARCHAR(255) NOT NULL,
+    estado         ENUM('pendiente','reconocido','no_reconocido') NOT NULL DEFAULT 'pendiente',
+    creado_en      DATETIME     NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    resuelto_en    DATETIME     NULL,
+    CONSTRAINT fk_aviso_usuario FOREIGN KEY (usuario_id) REFERENCES usuarios(id),
+    CONSTRAINT fk_aviso_disp    FOREIGN KEY (dispositivo_id) REFERENCES dispositivos(id),
+    INDEX idx_avisos_usuario (usuario_id, estado)
 ) ENGINE=InnoDB;
 
 -- ---------------------------------------------------------------------

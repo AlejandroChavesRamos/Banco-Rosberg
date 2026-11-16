@@ -11,7 +11,9 @@ import Inicio from './Inicio'
 import Llaves from './Llaves'
 import Login from './Login'
 import Registro from './Registro'
+import AvisosSeguridad from './AvisosSeguridad'
 import Retiro from './Retiro'
+import Seguridad from './Seguridad'
 import Transferir from './Transferir'
 
 export default function AppCliente() {
@@ -28,6 +30,7 @@ export default function AppCliente() {
         <Route path="retiro" element={<Retiro />} />
         <Route path="llaves" element={<Llaves />} />
         <Route path="cambiar-clave" element={<CambiarClave />} />
+        <Route path="seguridad" element={<Seguridad />} />
       </Route>
     </Routes>
   )
@@ -38,6 +41,7 @@ const MENU = [
   { a: '/app/transferir', texto: 'Enviar dinero' },
   { a: '/app/retiro', texto: 'Retirar sin tarjeta' },
   { a: '/app/llaves', texto: 'Mis llaves' },
+  { a: '/app/seguridad', texto: 'Seguridad' },
 ]
 
 // Marco comun + proteccion: si no hay sesion, manda al login
@@ -104,6 +108,7 @@ function Marco() {
 
       {/* <Outlet /> es el "hueco" donde se dibuja la pantalla actual */}
       <main className="mx-auto max-w-6xl px-6 py-8">
+        {!usuario.debeCambiar && <AvisosSeguridad />}
         <Outlet />
       </main>
     </div>

@@ -65,12 +65,20 @@ export async function llamar(metodo, ruta, cuerpo, opciones = {}) {
   if (tokenAcceso) cabeceras['Authorization'] = `Bearer ${tokenAcceso}`
   if (opciones.clave) cabeceras['Idempotency-Key'] = opciones.clave
 
-  const respuesta = await fetch(`/api${ruta}`, {
-    method: metodo,
-    headers: cabeceras,
-    body: cuerpo !== undefined ? JSON.stringify(cuerpo) : undefined,
-    credentials: 'same-origin', // envia la cookie de sesion
-  })
+  let respuesta
+  try {
+    respuesta = await fetch(`/api${ruta}`, {
+      method: metodo,
+      headers: cabeceras,
+      body: cuerpo !== undefined ? JSON.stringify(cuerpo) : undefined,
+      credentials: 'same-origin', // envia la cookie de sesion
+    })
+  } catch {
+    // La red fallo antes de obtener respuesta
+    const error = new Error('Sin conexión con el banco. Revisa tu conexión e intenta de nuevo.')
+    error.status = 0
+    throw error
+  }
 
   // Token vencido: pedir uno nuevo y repetir UNA vez
   if (respuesta.status === 401 && !opciones.sinRenovar && renovarSesion) {
@@ -80,7 +88,13 @@ export async function llamar(metodo, ruta, cuerpo, opciones = {}) {
 
   const datos = await respuesta.json().catch(() => null)
   if (!respuesta.ok) {
-    const error = new Error(mensajeDeError(datos, respuesta.status))
+    // Respuesta sin JSON y con error de servidor: el contenedor del backend esta
+    // apagado o reiniciandose (el proxy no lo encuentra)
+    const mensaje =
+      !datos && respuesta.status >= 500
+        ? 'El servicio del banco no responde en este momento. Intenta de nuevo en unos segundos.'
+        : mensajeDeError(datos, respuesta.status)
+    const error = new Error(mensaje)
     error.status = respuesta.status
     throw error
   }

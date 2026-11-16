@@ -50,6 +50,29 @@ class TokenSalida(BaseModel):
     rol: str
     nombre: str
     debe_cambiar_password: bool
+    debe_configurar_2fa: bool = False
+    tiene_2fa: bool = False
+
+
+CodigoTotp = Annotated[str, Field(pattern=r"^\d{6}$", description="Codigo de 6 digitos de la app autenticadora")]
+
+
+class Verificar2FA(BaseModel):
+    token_2fa: str
+    codigo: CodigoTotp
+
+
+class CodigoEntrada(BaseModel):
+    codigo: CodigoTotp
+
+
+class Desactivar2FA(BaseModel):
+    password: str = Field(max_length=128)
+    codigo: CodigoTotp
+
+
+class CambioConfiguracion(BaseModel):
+    valor: str = Field(min_length=1, max_length=20)
 
 
 class CambioPassword(BaseModel):
@@ -77,6 +100,8 @@ class TransferenciaEntrada(BaseModel):
     destino: str = Field(min_length=3, max_length=120,
                          description="Numero de cuenta (12 digitos), celular o correo registrado como llave")
     monto: Monto
+    codigo_2fa: str | None = Field(default=None, pattern=r"^\d{6}$",
+                                   description="Solo si el banco lo exige para montos grandes")
 
 
 class CodigoRetiroEntrada(BaseModel):

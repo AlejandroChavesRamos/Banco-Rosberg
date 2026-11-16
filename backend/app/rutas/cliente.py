@@ -7,7 +7,7 @@ from ..antifraude import motor
 from ..db.mysql import consultar, consultar_uno, ejecutar, leer_config, llamar_sp, obtener_conexion
 from ..errores import ErrorNegocio
 from ..esquemas import CodigoRetiroEntrada, NuevaCuenta, NuevaLlave, TransferenciaEntrada
-from ..seguridad import cifrado
+from ..seguridad import cifrado, doble_factor
 from ..seguridad.dependencias import UsuarioActual, requiere_rol
 from ..servicios import auditoria, banco, grafo
 from ..utilidades import enmascarar_nombre, enmascarar_numero, huella_dispositivo, ip_cliente
@@ -148,6 +148,18 @@ def transferir(
     previa = consultar_uno(conn, "SELECT id, estado FROM transacciones WHERE clave_idempotencia = %s", (clave,))
     if previa:
         return {"transaccion_id": previa["id"], "estado": previa["estado"], "repetida": True}
+
+    # Verificacion en dos pasos para montos grandes (si el admin la encendio)
+    monto_2fa = leer_config(conn, "MONTO_2FA")
+    if datos.monto >= monto_2fa and doble_factor.interruptor(conn, "2FA_TRANSFERENCIAS"):
+        if not u.tiene_2fa:
+            raise ErrorNegocio(403, "Para enviar montos desde $" + f"{monto_2fa:,}".replace(",", ".")
+                               + " debes activar la verificacion en dos pasos")
+        if not datos.codigo_2fa:
+            # 428 = "falta una condicion previa": la pantalla pide el codigo y reintenta
+            raise ErrorNegocio(428, "Escribe el codigo de tu app autenticadora para confirmar este envio")
+        if not doble_factor.verificar_codigo(conn, u.id, datos.codigo_2fa):
+            raise ErrorNegocio(400, "Codigo de verificacion incorrecto o ya utilizado")
 
     ip = ip_cliente(request)
     huella, agente = huella_dispositivo(request)
