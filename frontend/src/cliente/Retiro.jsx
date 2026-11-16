@@ -1,15 +1,15 @@
 // Retiro sin tarjeta: el cliente genera un codigo y lo canjea en ventanilla
 import { useEffect, useState } from 'react'
 import { api } from '../api'
-import { Aviso, Boton, Campo, Insignia, Selector, Tarjeta } from '../componentes/ui'
+import { Aviso, Boton, Campo, Insignia, Selector, Tarjeta, EstadoVacio } from '../componentes/ui'
 import { cop, enmascarar, fechaHora } from '../formato'
 
 const ESTADO_CODIGO = {
-  activo: { texto: 'Vigente', color: 'text-marca-700 bg-marca-50 dark:text-marca-300 dark:bg-marca-950' },
-  usado: { texto: 'Usado', color: 'text-slate-600 bg-slate-100 dark:text-slate-300 dark:bg-slate-800' },
-  vencido: { texto: 'Vencido', color: 'text-slate-500 bg-slate-100 dark:bg-slate-800' },
-  cancelado: { texto: 'Cancelado', color: 'text-slate-500 bg-slate-100 dark:bg-slate-800' },
-  bloqueado: { texto: 'Bloqueado', color: 'text-red-700 bg-red-50 dark:text-red-300 dark:bg-red-950' },
+  activo: { texto: 'Vigente', color: 'text-marca-700 bg-marca-50' },
+  usado: { texto: 'Usado', color: 'text-slate-600 bg-slate-100' },
+  vencido: { texto: 'Vencido', color: 'text-slate-500 bg-slate-100' },
+  cancelado: { texto: 'Cancelado', color: 'text-slate-500 bg-slate-100' },
+  bloqueado: { texto: 'Bloqueado', color: 'text-red-700 bg-red-50' },
 }
 
 export default function Retiro() {
@@ -53,7 +53,7 @@ export default function Retiro() {
   return (
     <div className="space-y-6">
       <div>
-        <h1 className="text-2xl font-bold tracking-tight">Retirar sin tarjeta</h1>
+        <h1 className="text-3xl font-bold tracking-tight text-marca-700">Retirar sin tarjeta</h1>
         <p className="text-sm text-slate-500">Genera un código y preséntalo con tu cédula en cualquier oficina.</p>
       </div>
 
@@ -79,11 +79,15 @@ export default function Retiro() {
       )}
 
       {historial.length === 0 ? (
-        <Tarjeta className="text-sm text-slate-500">Aún no has generado códigos de retiro.</Tarjeta>
+        <Tarjeta className="p-0">
+          <EstadoVacio icono="codigo" titulo="Aún no has generado códigos">
+            Elige una cuenta y un monto. El código te sirve para retirar en la oficina, sin tarjeta.
+          </EstadoVacio>
+        </Tarjeta>
       ) : (
         <Tarjeta className="p-0">
-          <h2 className="px-5 pt-5 font-semibold">Códigos recientes</h2>
-          <ul className="divide-y divide-slate-100 dark:divide-slate-800">
+          <h2 className="px-6 pt-6 text-lg font-semibold text-marca-700">Códigos recientes</h2>
+          <ul className="divide-y divide-slate-100">
             {historial.map((h) => (
               <li key={h.id} className="flex items-center justify-between px-5 py-3.5">
                 <div>
@@ -118,7 +122,7 @@ function CodigoGenerado({ c, onCerrar }) {
   return (
     <Tarjeta className="space-y-4 text-center">
       <p className="text-sm text-slate-500">Tu código para retirar {cop(c.monto)}</p>
-      <div className="cifras text-5xl font-bold tracking-[0.3em] text-marca-600 dark:text-marca-400">{c.codigo}</div>
+      <div className="cifras text-5xl font-bold tracking-[0.3em] text-marca-600">{c.codigo}</div>
       <p className="text-sm">
         Vence en <span className="cifras font-semibold">{restante}</span>
       </p>

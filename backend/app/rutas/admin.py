@@ -39,6 +39,26 @@ def crear_empleado(datos: EmpleadoEntrada, request: Request,
             "mensaje": "Entregue la contrasena temporal al empleado. No se volvera a mostrar."}
 
 
+@router.post("/empleados/{empleado_id}/restablecer", summary="Dar una contrasena temporal nueva a un empleado")
+def restablecer_password_empleado(empleado_id: int, request: Request,
+                                  u: UsuarioActual = Depends(admin), conn=Depends(obtener_conexion)):
+    """Para el empleado que olvido su contrasena. Tendra que cambiarla al entrar."""
+    if empleado_id == u.id:
+        raise ErrorNegocio(400, "Para cambiar su propia contrasena use 'Cambiar contrasena'")
+    empleado = consultar_uno(conn, "SELECT id, email FROM usuarios WHERE id = %s AND rol <> 'cliente'", (empleado_id,))
+    if not empleado:
+        raise ErrorNegocio(404, "Empleado no encontrado")
+    temporal = contrasenas.generar_temporal()
+    ejecutar(conn, "UPDATE usuarios SET password_hash = %s, debe_cambiar_password = TRUE, "
+                   "intentos_fallidos = 0, bloqueado_hasta = NULL WHERE id = %s",
+             (contrasenas.hashear(temporal), empleado_id))
+    ejecutar(conn, "UPDATE sesiones SET revocada = TRUE WHERE usuario_id = %s", (empleado_id,))
+    auditoria.registrar(conn, "RESTABLECER_PASSWORD_EMPLEADO", "usuarios", empleado_id, usuario_id=u.id,
+                        ip=ip_cliente(request))
+    return {"id": empleado_id, "email": empleado["email"], "password_temporal": temporal,
+            "mensaje": "Entregue la contrasena temporal al empleado. No se volvera a mostrar."}
+
+
 @router.patch("/empleados/{empleado_id}", summary="Activar o desactivar un empleado")
 def cambiar_estado_empleado(empleado_id: int, datos: EstadoEmpleado, request: Request,
                             u: UsuarioActual = Depends(admin), conn=Depends(obtener_conexion)):

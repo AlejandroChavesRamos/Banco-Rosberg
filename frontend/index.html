@@ -2,19 +2,12 @@
 <html lang="es">
   <head>
     <meta charset="UTF-8" />
+    <meta name="theme-color" content="#164A41" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>Banco Rosberg</title>
-    <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'><rect width='32' height='32' rx='8' fill='%23059669'/><text x='16' y='22' font-size='18' text-anchor='middle' fill='white' font-family='Arial' font-weight='bold'>R</text></svg>" />
+    <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='150 150 1000 1000'><rect x='150' y='150' width='1000' height='1000' rx='220' fill='white'/><g fill='none' stroke='%23F1B24A' stroke-width='88'><path d='M319 916 L508 510 A150 150 0 0 1 645 423 H730'/><path d='M487 916 L621 628 A110 110 0 0 1 721 565 H790'/><path d='M653 916 L732 746 A70 70 0 0 1 796 706 H860'/></g><path d='M677 379 H775 L1026 916 H928 Z' fill='%23164A41'/></svg>" />
     <link rel="preconnect" href="https://fonts.googleapis.com" />
-    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet" />
-    <script>
-      // Aplicar el tema guardado ANTES de dibujar, para que no "parpadee"
-      try {
-        const tema = localStorage.getItem('rosberg-tema')
-        const oscuro = tema ? tema === 'oscuro' : window.matchMedia('(prefers-color-scheme: dark)').matches
-        if (oscuro) document.documentElement.classList.add('dark')
-      } catch (e) {}
-    </script>
+    <link href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,500..800&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet" />
   </head>
   <body>
     <div id="root"></div>

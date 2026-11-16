@@ -1,7 +1,9 @@
 """Operaciones del cliente: cuentas, movimientos, llaves, transferencias y codigos de retiro."""
 import secrets
 
-from fastapi import APIRouter, Depends, Header, Request
+from datetime import date
+
+from fastapi import APIRouter, Depends, Header, Query, Request
 
 from ..antifraude import motor
 from ..db.mysql import consultar, consultar_uno, ejecutar, leer_config, llamar_sp, obtener_conexion
@@ -15,6 +17,26 @@ from ..utilidades import enmascarar_nombre, enmascarar_numero, huella_dispositiv
 router = APIRouter(tags=["2. Cliente"])
 solo_cliente = requiere_rol("cliente")
 cualquier_rol = requiere_rol("cliente", "cajero", "analista", "admin")
+
+
+# =================================================================== perfil
+@router.get("/perfil", summary="Mis datos (cedula y celular enmascarados)")
+def mi_perfil(u: UsuarioActual = Depends(solo_cliente), conn=Depends(obtener_conexion)):
+    fila = consultar_uno(conn, "SELECT documento_cifrado, telefono_cifrado, creado_en FROM usuarios WHERE id = %s",
+                         (u.id,))
+    cuentas = consultar_uno(conn, "SELECT COUNT(*) AS n FROM cuentas WHERE usuario_id = %s", (u.id,))["n"]
+
+    def _ultimos(cifrado_bytes, visibles: int) -> str | None:
+        # Solo se muestran los ultimos digitos: la pantalla nunca recibe el dato completo
+        if not cifrado_bytes:
+            return None
+        valor = cifrado.descifrar(cifrado_bytes)
+        return "*" * (len(valor) - visibles) + valor[-visibles:]
+
+    return {"nombre": u.nombre, "email": u.email,
+            "cedula": _ultimos(fila["documento_cifrado"], 3),
+            "celular": _ultimos(fila["telefono_cifrado"], 4),
+            "cliente_desde": fila["creado_en"], "cuentas": cuentas}
 
 
 # ================================================================== cuentas
@@ -40,7 +62,14 @@ def abrir_cuenta(datos: NuevaCuenta, request: Request,
 
 
 @router.get("/cuentas/{numero}/movimientos", summary="Movimientos de una cuenta")
-def movimientos(numero: str, u: UsuarioActual = Depends(cualquier_rol), conn=Depends(obtener_conexion)):
+def movimientos(
+    numero: str,
+    desde: date | None = Query(default=None, description="Solo movimientos desde este dia (AAAA-MM-DD)"),
+    hasta: date | None = Query(default=None, description="Solo movimientos hasta este dia, incluido"),
+    limite: int = Query(default=50, ge=1, le=500),
+    u: UsuarioActual = Depends(cualquier_rol),
+    conn=Depends(obtener_conexion),
+):
     if u.rol == "cliente":
         cuenta = banco.cuenta_propia(conn, numero, u.id)
     else:
@@ -55,9 +84,11 @@ def movimientos(numero: str, u: UsuarioActual = Depends(cualquier_rol), conn=Dep
         "FROM transacciones t "
         "LEFT JOIN cuentas co ON co.id = t.cuenta_origen_id "
         "LEFT JOIN cuentas cd ON cd.id = t.cuenta_destino_id "
-        "WHERE t.cuenta_origen_id = %s OR t.cuenta_destino_id = %s "
-        "ORDER BY t.creada_en DESC LIMIT 50",
-        (cuenta["id"], cuenta["id"]),
+        "WHERE (t.cuenta_origen_id = %s OR t.cuenta_destino_id = %s) "
+        "AND (%s IS NULL OR t.creada_en >= %s) "
+        "AND (%s IS NULL OR t.creada_en < %s + INTERVAL 1 DAY) "
+        "ORDER BY t.creada_en DESC LIMIT %s",
+        (cuenta["id"], cuenta["id"], desde, desde, hasta, hasta, limite),
     )
     resultado = []
     for f in filas:
@@ -182,7 +213,10 @@ def transferir(
         "bloqueada": "La transferencia fue bloqueada por seguridad. Comuniquese con el banco.",
     }
     return {"transaccion_id": tx["id"], "estado": tx["estado"], "mensaje": mensajes[tx["estado"]],
-            "destinatario": enmascarar_nombre(destino["titular"]), "monto": datos.monto}
+            "destinatario": enmascarar_nombre(destino["titular"]), "monto": datos.monto,
+            # Datos para el comprobante
+            "fecha": tx["creada_en"], "cuenta_origen": enmascarar_numero(origen["numero"]),
+            "cuenta_destino": enmascarar_numero(destino["numero"])}
 
 
 # ========================================================= codigos de retiro

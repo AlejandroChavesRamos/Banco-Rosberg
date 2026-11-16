@@ -10,7 +10,7 @@ from fastapi.responses import JSONResponse
 from .config import settings
 from .db.mysql import conectar
 from .errores import ErrorNegocio
-from .rutas import admin, analista, auth, cajero, cliente, tablero
+from .rutas import admin, analista, auth, cajero, cliente, publico, tablero
 from .servicios import grafo
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s: %(message)s")
@@ -71,6 +71,7 @@ app.include_router(cajero.router)
 app.include_router(analista.router)
 app.include_router(admin.router)
 app.include_router(tablero.router)
+app.include_router(publico.router)
 
 
 @app.get("/salud", tags=["0. Sistema"], summary="Estado de las bases de datos")

@@ -7,6 +7,7 @@ import './index.css'
 import { SesionProvider } from './sesion'
 import AppCliente from './cliente/AppCliente'
 import Intranet from './intranet/Intranet'
+import NoEncontrado from './componentes/NoEncontrado'
 
 ReactDOM.createRoot(document.getElementById('root')).render(
   <BrowserRouter>
@@ -28,7 +29,8 @@ ReactDOM.createRoot(document.getElementById('root')).render(
           </SesionProvider>
         }
       />
-      <Route path="*" element={<Navigate to="/app" replace />} />
+      {/* Cualquier otra direccion: pagina de "no encontrado" */}
+      <Route path="*" element={<NoEncontrado />} />
     </Routes>
   </BrowserRouter>,
 )

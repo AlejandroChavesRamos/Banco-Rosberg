@@ -12,7 +12,8 @@ from fastapi import APIRouter, Depends, HTTPException, Query, Request, Response,
 
 from ..config import settings
 from ..db.mysql import consultar_uno, ejecutar, leer_config, obtener_conexion
-from ..esquemas import CambioPassword, LoginEntrada, Portal, RegistroEntrada, TokenSalida
+from ..esquemas import CambioPassword, LoginEntrada, Portal, RecuperarPassword, RegistroEntrada, TokenSalida
+from ..seguridad import cifrado
 from ..seguridad import contrasenas, tokens
 from ..seguridad.dependencias import UsuarioActual, usuario_actual
 from ..servicios import auditoria, banco, grafo
@@ -57,6 +58,34 @@ def _emitir_sesion(conn, response: Response, usuario: dict, portal: str,
     )
 
 
+def _mensaje_bloqueo(segundos: int | None) -> str:
+    minutos = max(1, -(-(segundos or 0) // 60))  # redondea hacia arriba
+    return (f"Usuario bloqueado por intentos fallidos. Podra intentar de nuevo en "
+            f"{minutos} minuto{'s' if minutos != 1 else ''}.")
+
+
+def _sumar_intento_fallido(conn, usuario: dict) -> str:
+    """Suma un intento fallido, bloquea si llega al maximo y devuelve el aviso para la pantalla.
+
+    El aviso solo se le muestra a quien escribio un correo que SI existe, igual
+    que ya pasaba con el mensaje de "usuario bloqueado".
+    """
+    maximo = leer_config(conn, "MAX_INTENTOS_LOGIN")
+    minutos = leer_config(conn, "MINUTOS_BLOQUEO_LOGIN")
+    ejecutar(
+        conn,
+        "UPDATE usuarios SET "
+        "bloqueado_hasta = IF(intentos_fallidos + 1 >= %s, NOW() + INTERVAL %s MINUTE, NULL), "
+        "intentos_fallidos = IF(intentos_fallidos + 1 >= %s, 0, intentos_fallidos + 1) "
+        "WHERE id = %s",
+        (maximo, minutos, maximo, usuario["id"]),
+    )
+    restantes = maximo - (usuario["intentos_fallidos"] + 1)
+    if restantes <= 0:
+        return f"El usuario quedo bloqueado durante {minutos} minutos."
+    return f"Le queda{'n' if restantes != 1 else ''} {restantes} intento{'s' if restantes != 1 else ''}."
+
+
 @router.post("/registro", status_code=201, summary="Registro en linea de un cliente nuevo")
 def registro(datos: RegistroEntrada, request: Request, conn=Depends(obtener_conexion)):
     creado = banco.crear_cliente(
@@ -82,8 +111,9 @@ def login(datos: LoginEntrada, request: Request, response: Response, conn=Depend
 
     usuario = consultar_uno(
         conn,
-        "SELECT id, rol, nombre, password_hash, activo, debe_cambiar_password, "
-        "(bloqueado_hasta IS NOT NULL AND bloqueado_hasta > NOW()) AS bloqueado "
+        "SELECT id, rol, nombre, password_hash, activo, debe_cambiar_password, intentos_fallidos, "
+        "(bloqueado_hasta IS NOT NULL AND bloqueado_hasta > NOW()) AS bloqueado, "
+        "TIMESTAMPDIFF(SECOND, NOW(), bloqueado_hasta) AS segundos_bloqueo "
         "FROM usuarios WHERE email = %s",
         (email,),
     )
@@ -101,24 +131,14 @@ def login(datos: LoginEntrada, request: Request, response: Response, conn=Depend
     # 2) Usuario bloqueado temporalmente por intentos fallidos
     if usuario["bloqueado"]:
         _evento(False, usuario["id"])
-        raise HTTPException(status.HTTP_423_LOCKED,
-                            "Usuario bloqueado temporalmente por intentos fallidos. Intente mas tarde.")
+        raise HTTPException(status.HTTP_423_LOCKED, _mensaje_bloqueo(usuario["segundos_bloqueo"]))
 
     # 3) Contrasena incorrecta: sumar intento y bloquear si llega al maximo
     if not contrasenas.verificar(usuario["password_hash"], datos.password):
-        maximo = leer_config(conn, "MAX_INTENTOS_LOGIN")
-        minutos = leer_config(conn, "MINUTOS_BLOQUEO_LOGIN")
-        ejecutar(
-            conn,
-            "UPDATE usuarios SET "
-            "bloqueado_hasta = IF(intentos_fallidos + 1 >= %s, NOW() + INTERVAL %s MINUTE, NULL), "
-            "intentos_fallidos = IF(intentos_fallidos + 1 >= %s, 0, intentos_fallidos + 1) "
-            "WHERE id = %s",
-            (maximo, minutos, maximo, usuario["id"]),
-        )
+        aviso = _sumar_intento_fallido(conn, usuario)
         _evento(False, usuario["id"])
         auditoria.registrar(conn, "LOGIN_FALLIDO", "usuarios", usuario["id"], ip=ip)
-        raise HTTPException(status.HTTP_401_UNAUTHORIZED, _CREDENCIALES_INVALIDAS)
+        raise HTTPException(status.HTTP_401_UNAUTHORIZED, f"{_CREDENCIALES_INVALIDAS}. {aviso}")
 
     # 4) Puerta equivocada: un cliente en la Intranet o un empleado en la App
     if not _rol_permitido(usuario["rol"], datos.portal):
@@ -212,3 +232,45 @@ def cambiar_password(datos: CambioPassword, request: Request,
     ejecutar(conn, "UPDATE sesiones SET revocada = TRUE WHERE usuario_id = %s", (u.id,))
     auditoria.registrar(conn, "CAMBIO_PASSWORD", "usuarios", u.id, usuario_id=u.id, ip=ip_cliente(request))
     return {"mensaje": "Contrasena actualizada. Inicie sesion de nuevo."}
+
+
+@router.post("/recuperar-password", summary="Olvide mi contrasena (solo clientes)")
+def recuperar_password(datos: RecuperarPassword, request: Request, conn=Depends(obtener_conexion)):
+    """El banco no envia correos, asi que el cliente demuestra quien es con la
+    cedula y el celular que registro al abrir la cuenta. Los empleados no usan
+    esta ruta: su contrasena la restablece un administrador.
+
+    Los intentos fallidos cuentan igual que los del login: tras varios, el
+    usuario queda bloqueado (evita adivinar cedulas o celulares a la fuerza).
+    """
+    ip = ip_cliente(request)
+    no_coincide = HTTPException(status.HTTP_400_BAD_REQUEST, "Los datos no coinciden con los de ninguna cuenta")
+    usuario = consultar_uno(
+        conn,
+        "SELECT id, activo, intentos_fallidos, documento_hash, telefono_cifrado, "
+        "(bloqueado_hasta IS NOT NULL AND bloqueado_hasta > NOW()) AS bloqueado, "
+        "TIMESTAMPDIFF(SECOND, NOW(), bloqueado_hasta) AS segundos_bloqueo "
+        "FROM usuarios WHERE email = %s AND rol = 'cliente'",
+        (datos.email.lower(),),
+    )
+    if not usuario or not usuario["activo"]:
+        raise no_coincide
+    if usuario["bloqueado"]:
+        raise HTTPException(status.HTTP_423_LOCKED, _mensaje_bloqueo(usuario["segundos_bloqueo"]))
+
+    cedula_ok = cifrado.iguales(usuario["documento_hash"] or "", cifrado.indice_ciego(datos.cedula, "cedula"))
+    celular_ok = bool(usuario["telefono_cifrado"]) and cifrado.iguales(
+        cifrado.descifrar(usuario["telefono_cifrado"]), datos.celular)
+    if not (cedula_ok and celular_ok):
+        aviso = _sumar_intento_fallido(conn, usuario)
+        auditoria.registrar(conn, "RECUPERACION_FALLIDA", "usuarios", usuario["id"], ip=ip)
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, f"{no_coincide.detail}. {aviso}")
+
+    ejecutar(conn, "UPDATE usuarios SET password_hash = %s, debe_cambiar_password = FALSE, "
+                   "intentos_fallidos = 0, bloqueado_hasta = NULL WHERE id = %s",
+             (contrasenas.hashear(datos.nueva), usuario["id"]))
+    # Si alguien tenia una sesion abierta con la contrasena vieja, queda fuera
+    ejecutar(conn, "UPDATE sesiones SET revocada = TRUE WHERE usuario_id = %s", (usuario["id"],))
+    auditoria.registrar(conn, "RECUPERACION_PASSWORD", "usuarios", usuario["id"],
+                        usuario_id=usuario["id"], ip=ip)
+    return {"mensaje": "Contrasena actualizada. Ya puede iniciar sesion."}

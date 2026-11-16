@@ -11,7 +11,7 @@ const NOMBRE_REGLA = {
   DISPOSITIVO_NUEVO: 'Disp. nuevo', CUENTA_DESTINO_NUEVA: 'Cuenta nueva', DISPOSITIVO_COMPARTIDO: 'Disp. compartido',
   CICLO_DINERO: 'Ciclo', CUENTA_MULA: 'Mula', CERCANIA_FRAUDE: 'Cerca de fraude', CODIGO_RETIRO_FUERZA_BRUTA: 'Fuerza bruta',
 }
-const COLOR_DECISION = { aprobada: '#10b981', retenida: '#f59e0b', bloqueada: '#ef4444', rechazada: '#991b1b' }
+const COLOR_DECISION = { aprobada: '#4D774E', retenida: '#F1B24A', bloqueada: '#ef4444', rechazada: '#991b1b' }
 
 export default function Tablero() {
   const [datos, setDatos] = useState(null)
@@ -24,13 +24,13 @@ export default function Tablero() {
   if (!datos) return <Aviso>{error}</Aviso>
   const i = datos.indicadores
   const oscuro = document.documentElement.classList.contains('dark')
-  const ejes = oscuro ? '#94a3b8' : '#64748b'
-  const tooltip = { contentStyle: { background: oscuro ? '#0f172a' : '#fff', border: '1px solid #33415533', borderRadius: 12, fontSize: 12 } }
+  const ejes = oscuro ? '#8FA391' : '#627868'
+  const tooltip = { contentStyle: { background: oscuro ? '#0f172a' : '#fff', border: '1px solid #2F4A3D33', borderRadius: 12, fontSize: 12 } }
 
   return (
     <div className="space-y-6">
       <div>
-        <h1 className="text-2xl font-bold tracking-tight">Tablero</h1>
+        <h1 className="text-3xl font-bold tracking-tight text-marca-700">Tablero</h1>
         <p className="text-sm text-slate-500">Visión general de Banco Rosberg. Se actualiza cada 10 segundos.</p>
       </div>
 
@@ -47,7 +47,7 @@ export default function Tablero() {
 
       <div className="grid gap-6 xl:grid-cols-2">
         <Tarjeta>
-          <h2 className="mb-4 font-semibold">Transacciones por hora (últimas 24 h)</h2>
+          <h2 className="mb-4 text-lg font-semibold text-marca-700">Transacciones por hora (últimas 24 h)</h2>
           <ResponsiveContainer width="100%" height={260}>
             <BarChart data={datos.por_hora}>
               <CartesianGrid strokeDasharray="3 3" stroke={ejes} strokeOpacity={0.2} />
@@ -55,14 +55,14 @@ export default function Tablero() {
               <YAxis stroke={ejes} fontSize={11} allowDecimals={false} />
               <Tooltip {...tooltip} />
               <Legend wrapperStyle={{ fontSize: 12 }} />
-              <Bar dataKey="aprobadas" name="Aprobadas" stackId="a" fill="#10b981" />
+              <Bar dataKey="aprobadas" name="Aprobadas" stackId="a" fill="#4D774E" />
               <Bar dataKey="frenadas" name="Frenadas por el motor" stackId="a" fill="#ef4444" radius={[4, 4, 0, 0]} />
             </BarChart>
           </ResponsiveContainer>
         </Tarjeta>
 
         <Tarjeta>
-          <h2 className="mb-4 font-semibold">Alertas por regla</h2>
+          <h2 className="mb-4 text-lg font-semibold text-marca-700">Alertas por regla</h2>
           <ResponsiveContainer width="100%" height={260}>
             <BarChart data={datos.por_regla.map((r) => ({ ...r, nombre: NOMBRE_REGLA[r.codigo] ?? r.codigo }))} layout="vertical" margin={{ left: 20 }}>
               <CartesianGrid strokeDasharray="3 3" stroke={ejes} strokeOpacity={0.2} />
@@ -71,13 +71,13 @@ export default function Tablero() {
               <Tooltip {...tooltip} />
               <Legend wrapperStyle={{ fontSize: 12 }} />
               <Bar dataKey="abiertas" name="Abiertas" fill="#ef4444" stackId="b" />
-              <Bar dataKey={(r) => r.total - r.abiertas} name="Resueltas" fill="#94a3b8" stackId="b" radius={[0, 4, 4, 0]} />
+              <Bar dataKey={(r) => r.total - r.abiertas} name="Resueltas" fill="#8FA391" stackId="b" radius={[0, 4, 4, 0]} />
             </BarChart>
           </ResponsiveContainer>
         </Tarjeta>
 
         <Tarjeta>
-          <h2 className="mb-4 font-semibold">Decisiones del motor (transferencias, 7 días)</h2>
+          <h2 className="mb-4 text-lg font-semibold text-marca-700">Decisiones del motor (transferencias, 7 días)</h2>
           <ResponsiveContainer width="100%" height={260}>
             <PieChart>
               <Pie data={datos.decisiones} dataKey="total" nameKey="estado" innerRadius={60} outerRadius={95} paddingAngle={2}>
@@ -90,9 +90,9 @@ export default function Tablero() {
         </Tarjeta>
 
         <Tarjeta className="space-y-3 text-sm">
-          <h2 className="font-semibold">¿Cómo leer este tablero?</h2>
+          <h2 className="text-lg font-semibold text-marca-700">¿Cómo leer este tablero?</h2>
           <p className="text-slate-500">
-            <strong className="text-slate-700 dark:text-slate-300">Dinero protegido</strong> es la suma de las operaciones que el
+            <strong className="text-slate-700">Dinero protegido</strong> es la suma de las operaciones que el
             motor retuvo o bloqueó, o que un analista rechazó: dinero que no llegó a manos de un posible estafador.
           </p>
           <p className="text-slate-500">
@@ -110,7 +110,7 @@ function Indicador({ titulo, valor, nota, destacado, ancho }) {
   return (
     <Tarjeta className={ancho ? 'col-span-2' : ''}>
       <div className="text-xs font-medium text-slate-500">{titulo}</div>
-      <div className={`cifras mt-1 text-2xl font-bold tracking-tight ${destacado ? 'text-red-600 dark:text-red-400' : ''}`}>{valor}</div>
+      <div className={`cifras mt-1 text-2xl font-bold tracking-tight ${destacado ? 'text-red-600' : ''}`}>{valor}</div>
       {nota && <div className="mt-1 text-xs text-slate-500">{nota}</div>}
     </Tarjeta>
   )
