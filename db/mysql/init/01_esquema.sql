@@ -127,6 +127,7 @@ CREATE TABLE transacciones (
     dispositivo_id     BIGINT UNSIGNED NULL,
     ejecutada_por      BIGINT UNSIGNED NULL,             -- cajero, si fue en ventanilla
     clave_idempotencia VARCHAR(64)  NULL,                -- evita duplicados por doble clic
+    mensaje            VARCHAR(140) NULL,                -- nota del que envia ("Para el almuerzo")
     creada_en          DATETIME(6)  NOT NULL DEFAULT CURRENT_TIMESTAMP(6),
     resuelta_en        DATETIME(6)  NULL,
     resuelta_por       BIGINT UNSIGNED NULL,             -- analista que la resolvio

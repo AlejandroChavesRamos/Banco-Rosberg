@@ -1,6 +1,6 @@
 // =====================================================================
 // Enviar dinero en 3 pasos:
-//   1. Datos (cuenta origen, destino, monto)
+//   1. Datos (cuenta origen, destino, monto y un mensaje opcional, como en Nequi)
 //   2. Confirmar: se muestra a quien le llega (nombre enmascarado)
 //   3. Resultado: exitosa, en revision o bloqueada (decide el motor antifraude)
 // Si se llega desde "Envio rapido" del Inicio, los datos vienen ya puestos
@@ -22,6 +22,7 @@ export default function Transferir() {
   const [origen, setOrigen] = useState('')
   const [destino, setDestino] = useState(desdeEnvioRapido.current?.destino ?? '')
   const [monto, setMonto] = useState(desdeEnvioRapido.current?.monto ?? '')
+  const [mensaje, setMensaje] = useState('') // nota para quien recibe ("Para el almuerzo")
   const [destinatario, setDestinatario] = useState(null)
   const [clave, setClave] = useState(null) // Idempotency-Key de ESTA transferencia
   const [resultado, setResultado] = useState(null)
@@ -70,6 +71,7 @@ export default function Transferir() {
     setCargando(true)
     try {
       const cuerpo = { cuenta_origen: origen, destino: destino.trim(), monto: Number(monto) }
+      if (mensaje.trim()) cuerpo.mensaje = mensaje.trim()
       if (pideCodigo) cuerpo.codigo_2fa = codigo2fa
       const r = await api.post('/transferencias', cuerpo, { clave })
       setResultado(r)
@@ -90,6 +92,7 @@ export default function Transferir() {
     setCodigo2fa('')
     setDestino('')
     setMonto('')
+    setMensaje('')
     setDestinatario(null)
     setResultado(null)
     api.get('/cuentas').then((lista) => setCuentas(lista.filter((c) => c.estado === 'activa')))
@@ -122,6 +125,11 @@ export default function Transferir() {
                        value={destino} onChange={(e) => setDestino(e.target.value)} />
                 <Campo etiqueta="Monto" type="number" inputMode="numeric" min="1000" step="1" required placeholder="50000"
                        ayuda={`Disponible: ${cop(saldoOrigen)}`} value={monto} onChange={(e) => setMonto(e.target.value)} />
+                <div className="md:col-span-2">
+                  <Campo etiqueta="Mensaje (opcional)" maxLength={140} placeholder="Ej.: Para el almuerzo 🍔"
+                         ayuda={`Lo verá quien recibe el dinero. ${mensaje.length}/140`}
+                         value={mensaje} onChange={(e) => setMensaje(e.target.value)} />
+                </div>
                 <div className="md:col-span-2"><Aviso>{error}</Aviso></div>
                 <div className="md:col-span-2">
                   <Boton type="submit" cargando={cargando} disabled={!origen}>Continuar</Boton>
@@ -144,6 +152,12 @@ export default function Transferir() {
                   <div className="text-sm text-slate-500">Cuenta de {destinatario.tipo} {destinatario.cuenta}</div>
                 </div>
               </div>
+              {mensaje.trim() && (
+                <div className="flex items-start gap-3 rounded-xl bg-marca-50 p-4 text-sm">
+                  <Icono nombre="chat" className="mt-0.5 h-4 w-4 text-marca-600" />
+                  <span className="italic text-marca-800">“{mensaje.trim()}”</span>
+                </div>
+              )}
               <p className="text-sm text-slate-500">
                 Verifica que el nombre corresponda a la persona. Por tu seguridad solo mostramos parte del nombre.
               </p>
@@ -237,6 +251,7 @@ function Resultado({ r, onOtra }) {
         {r.cuenta_origen && <Linea etiqueta="Desde">Cuenta {r.cuenta_origen}</Linea>}
         {r.destinatario && <Linea etiqueta="Para">{r.destinatario}</Linea>}
         {r.cuenta_destino && <Linea etiqueta="Cuenta destino">{r.cuenta_destino}</Linea>}
+        {r.mensaje_envio && <Linea etiqueta="Mensaje"><span className="font-normal italic">“{r.mensaje_envio}”</span></Linea>}
       </dl>
       <p className="px-6 pt-4 text-center text-xs text-slate-400">
         Banco Rosberg. Proyecto académico: este comprobante no tiene validez legal.

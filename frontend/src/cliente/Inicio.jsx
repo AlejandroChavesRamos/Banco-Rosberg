@@ -162,11 +162,19 @@ function CampoFecha({ etiqueta, ...resto }) {
   )
 }
 
+// El mensaje de una transferencia lo escribe OTRA persona. Si empieza por
+// = + - @, Excel lo ejecutaria como formula ("inyeccion CSV"); con un
+// apostrofo delante, Excel lo muestra como texto.
+function textoSeguro(valor) {
+  if (!valor) return ''
+  return /^[=+\-@\t\r]/.test(valor) ? `'${valor}` : valor
+}
+
 // Descarga los movimientos que estan en pantalla como archivo CSV (se abre en Excel)
 function descargarExtracto(detalle) {
-  const filas = [['Fecha', 'Tipo', 'Sentido', 'Contraparte', 'Estado', 'Valor']]
+  const filas = [['Fecha', 'Tipo', 'Sentido', 'Contraparte', 'Mensaje', 'Estado', 'Valor']]
   for (const m of detalle.movimientos) {
-    filas.push([fechaHora(m.fecha), TIPOS[m.tipo], m.sentido, m.contraparte ?? '', ESTADOS[m.estado].texto,
+    filas.push([fechaHora(m.fecha), TIPOS[m.tipo], m.sentido, m.contraparte ?? '', textoSeguro(m.mensaje), ESTADOS[m.estado].texto,
                 (m.sentido === 'entrada' ? '' : '-') + Number(m.monto)])
   }
   // Punto y coma como separador (el Excel en espanol lo espera) y comillas por si hay comas
@@ -283,6 +291,7 @@ function TablaMovimientos({ movimientos }) {
                     <span className="font-medium">
                       {TIPOS[m.tipo]}{' '}
                       {m.contraparte && <span className="font-normal text-slate-500">{entrada ? 'de' : 'a'} {m.contraparte}</span>}
+                      {m.mensaje && <span className="block max-w-xs truncate text-xs font-normal italic text-marca-600" title={m.mensaje}>“{m.mensaje}”</span>}
                     </span>
                   </div>
                 </td>

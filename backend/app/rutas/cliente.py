@@ -79,7 +79,7 @@ def movimientos(
 
     filas = consultar(
         conn,
-        "SELECT t.id, t.tipo, t.monto, t.estado, t.creada_en, t.cuenta_origen_id, "
+        "SELECT t.id, t.tipo, t.monto, t.estado, t.creada_en, t.cuenta_origen_id, t.mensaje, "
         "co.numero AS origen, cd.numero AS destino "
         "FROM transacciones t "
         "LEFT JOIN cuentas co ON co.id = t.cuenta_origen_id "
@@ -98,6 +98,7 @@ def movimientos(
             "id": f["id"], "tipo": f["tipo"], "sentido": "salida" if salida else "entrada",
             "monto": f["monto"], "estado": f["estado"], "fecha": f["creada_en"],
             "contraparte": enmascarar_numero(contraparte) if contraparte else None,
+            "mensaje": f["mensaje"],
         })
     return {"cuenta": cuenta["numero"], "saldo": cuenta["saldo"], "estado": cuenta["estado"],
             "movimientos": resultado}
@@ -204,7 +205,7 @@ def transferir(
 
     tx_id = llamar_sp(conn, "sp_transferir", [
         origen["id"], destino["id"], datos.monto, evaluacion.decision,
-        evaluacion.puntaje, ip, dispositivo_id, clave,
+        evaluacion.puntaje, ip, dispositivo_id, clave, datos.mensaje,
     ])
     tx = consultar_uno(conn, "SELECT id, estado, puntaje_riesgo, creada_en FROM transacciones WHERE id = %s",
                        (tx_id,))
@@ -214,7 +215,8 @@ def transferir(
     auditoria.registrar(conn, "TRANSFERENCIA", "transacciones", tx["id"], usuario_id=u.id,
                         detalle={"origen": origen["numero"], "destino": destino["numero"],
                                  "monto": datos.monto, "estado": tx["estado"], "puntaje": tx["puntaje_riesgo"],
-                                 "motivos": [m["codigo"] for m in evaluacion.motivos]},
+                                 "motivos": [m["codigo"] for m in evaluacion.motivos],
+                                 "con_mensaje": datos.mensaje is not None},
                         ip=ip)
     grafo.sincronizar_transferencia(tx["id"], origen["id"], destino["id"], datos.monto,
                                     tx["creada_en"], tx["estado"])
@@ -227,6 +229,7 @@ def transferir(
     return {"transaccion_id": tx["id"], "estado": tx["estado"], "mensaje": mensajes[tx["estado"]],
             "destinatario": enmascarar_nombre(destino["titular"]), "monto": datos.monto,
             # Datos para el comprobante
+            "mensaje_envio": datos.mensaje,  # la nota del cliente ("mensaje" es el texto del resultado)
             "fecha": tx["creada_en"], "cuenta_origen": enmascarar_numero(origen["numero"]),
             "cuenta_destino": enmascarar_numero(destino["numero"])}
 

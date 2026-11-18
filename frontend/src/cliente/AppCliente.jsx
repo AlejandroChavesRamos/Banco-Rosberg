@@ -3,11 +3,15 @@
 // barra superior con el menu (pensada para computador) y proteccion de
 // las pantallas que exigen sesion.
 // =====================================================================
+import { useEffect, useState } from 'react'
 import { Link, Navigate, NavLink, Outlet, Route, Routes, useLocation, useNavigate } from 'react-router-dom'
+import { api } from '../api'
 import Icono from '../componentes/Icono'
 import NoEncontrado from '../componentes/NoEncontrado'
+import { usePeriodico } from '../componentes/usePeriodico'
 import { Logo, PantallaCargando } from '../componentes/ui'
 import { useSesion } from '../sesion'
+import Ayuda from './Ayuda'
 import CambiarClave from './CambiarClave'
 import Carreras from './Carreras'
 import Inicio from './Inicio'
@@ -39,6 +43,8 @@ export default function AppCliente() {
         <Route path="perfil" element={<Perfil />} />
         <Route path="cambiar-clave" element={<CambiarClave />} />
         <Route path="seguridad" element={<Seguridad />} />
+        <Route path="ayuda" element={<Ayuda />} />
+        <Route path="ayuda/:id" element={<Ayuda />} />
         <Route path="*" element={<NoEncontrado completa={false} volver="/app" textoVolver="Ir a mis cuentas" />} />
       </Route>
     </Routes>
@@ -51,6 +57,7 @@ const MENU = [
   { a: '/app/retiro', texto: 'Retirar sin tarjeta', icono: 'codigo' },
   { a: '/app/llaves', texto: 'Mis llaves', icono: 'llave' },
   { a: '/app/seguridad', texto: 'Seguridad', icono: 'escudo' },
+  { a: '/app/ayuda', texto: 'Ayuda', icono: 'chat', contador: true },
 ]
 
 // Marco comun + proteccion: si no hay sesion, manda al login
@@ -58,6 +65,14 @@ function Marco() {
   const { usuario, cargando, cerrarSesion } = useSesion()
   const ubicacion = useLocation()
   const navegar = useNavigate()
+  const [sinLeer, setSinLeer] = useState(0) // respuestas del asesor que el cliente no ha visto
+
+  const puedeVer = Boolean(usuario && !usuario.debeCambiar)
+  function cargarSinLeer() {
+    if (puedeVer) api.get('/ayuda/resumen').then((r) => setSinLeer(r.no_leidos)).catch(() => {})
+  }
+  usePeriodico(cargarSinLeer, 10000)
+  useEffect(cargarSinLeer, [puedeVer]) // apenas inicia sesion, sin esperar 10 s
 
   if (cargando) return <PantallaCargando />
   if (!usuario) return <Navigate to="/app/login" replace />
@@ -85,7 +100,7 @@ function Marco() {
                 <NavLink
                   key={m.a}
                   to={m.a}
-                  end
+                  end={m.a === '/app'}
                   className={({ isActive }) =>
                     `flex items-center gap-2 whitespace-nowrap rounded-full px-4 py-2 text-sm font-medium transition-colors ${
                       isActive ? 'bg-marca-700 text-white' : 'text-marca-700 hover:bg-marca-100'
@@ -94,6 +109,12 @@ function Marco() {
                 >
                   <Icono nombre={m.icono} className="h-4 w-4" />
                   {m.texto}
+                  {m.contador && sinLeer > 0 && (
+                    <span className="grid h-5 min-w-[1.25rem] place-items-center rounded-full bg-oro px-1.5 text-[11px] font-bold text-marca-900"
+                          aria-label={`${sinLeer} mensajes sin leer`}>
+                      {sinLeer}
+                    </span>
+                  )}
                 </NavLink>
               ))}
             </nav>

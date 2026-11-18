@@ -21,7 +21,12 @@ def tablero(u: UsuarioActual = Depends(requiere_rol("analista", "admin")), conn=
           (SELECT COUNT(*) FROM alertas_fraude WHERE estado IN ('abierta', 'en_revision')) AS alertas_abiertas,
           (SELECT COUNT(*) FROM transacciones WHERE estado IN ('retenida', 'bloqueada', 'rechazada')) AS operaciones_frenadas,
           (SELECT IFNULL(SUM(monto), 0) FROM transacciones
-            WHERE estado IN ('retenida', 'bloqueada', 'rechazada'))                     AS dinero_protegido
+            WHERE estado IN ('retenida', 'bloqueada', 'rechazada'))                     AS dinero_protegido,
+          (SELECT COUNT(*) FROM tiquetes WHERE estado <> 'cerrado')                     AS tiquetes_abiertos,
+          (SELECT COUNT(*) FROM tiquetes WHERE estado = 'nuevo')                        AS tiquetes_sin_asignar,
+          (SELECT ROUND(AVG(calificacion), 1) FROM tiquetes)                            AS satisfaccion,
+          (SELECT COUNT(calificacion) FROM tiquetes)                                    AS calificaciones,
+          (SELECT COUNT(*) FROM solicitudes_publicas WHERE NOT atendida)                AS solicitudes_pendientes
         """,
     )
 

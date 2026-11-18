@@ -4,6 +4,8 @@
 #   backend   -> API FastAPI
 #   frontend  -> pantallas React: http://localhost:5173/app (clientes)
 #                y http://localhost:5173/intranet (empleados)
+#   mailpit   -> "buzon de prueba": recibe los correos que envia el banco
+#                y los muestra en http://localhost:8025 (no llegan a nadie real)
 #   simulador -> herramienta que no arranca con "up"; se usa con
 #                docker compose run --rm simulador <comando>
 
@@ -68,6 +70,29 @@ services:
     networks:
       - red_interna
 
+  # Servidor de correo de PRUEBA. El backend le entrega los correos por SMTP
+  # (puerto 1025, solo dentro de la red interna) y Mailpit los guarda y los
+  # muestra en una bandeja web. Ningun correo sale a internet.
+  mailpit:
+    image: axllent/mailpit:v1.21.8
+    container_name: banco_mailpit
+    restart: unless-stopped
+    environment:
+      MP_MAX_MESSAGES: 500                   # guarda los ultimos 500 correos
+      MP_DATABASE: /data/mailpit.db          # en un volumen: los correos sobreviven a un reinicio
+      TZ: ${TZ:-UTC}
+    ports:
+      - "127.0.0.1:8025:8025"               # bandeja web
+    volumes:
+      - mailpit_data:/data
+    healthcheck:
+      test: ["CMD", "/mailpit", "readyz"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+    networks:
+      - red_interna
+
   backend:
     build: ./backend
     container_name: banco_backend
@@ -90,6 +115,11 @@ services:
       # (el simulador la usa para simular clientes en distintas IPs).
       # En la Fase 6 solo se confiara en la que agregue nginx.
       CONFIAR_X_FORWARDED_FOR: "true"
+      # Correo: el backend NO depende de que Mailpit este encendido. Si esta
+      # caido, la respuesta queda guardada como "fallida" y se puede reintentar.
+      SMTP_HOST: mailpit
+      SMTP_PUERTO: 1025
+      CORREO_REMITENTE: "Banco Rosberg <no-responder@rosberg.co>"
     # --reload: al guardar un archivo .py la API se reinicia sola (solo en desarrollo)
     command: uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload
     volumes:
@@ -169,6 +199,7 @@ volumes:
   mysql_data:
   neo4j_data:
   neo4j_logs:
+  mailpit_data:
 
 networks:
   red_interna:

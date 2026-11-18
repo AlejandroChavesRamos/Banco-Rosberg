@@ -66,8 +66,9 @@ BEGIN
        OR NOT (NEW.tipo <=> OLD.tipo)
        OR NOT (NEW.cuenta_origen_id  <=> OLD.cuenta_origen_id)
        OR NOT (NEW.cuenta_destino_id <=> OLD.cuenta_destino_id)
-       OR NEW.creada_en <> OLD.creada_en THEN
-        SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT = 'Monto, tipo, cuentas y fecha de una transaccion son inmutables';
+       OR NEW.creada_en <> OLD.creada_en
+       OR NOT (NEW.mensaje <=> OLD.mensaje) THEN
+        SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT = 'Monto, tipo, cuentas, fecha y mensaje de una transaccion son inmutables';
     END IF;
 END$$
 
@@ -129,6 +130,7 @@ CREATE PROCEDURE sp_transferir(
     IN  p_ip          VARCHAR(45),
     IN  p_dispositivo BIGINT UNSIGNED,
     IN  p_idem        VARCHAR(64),
+    IN  p_mensaje     VARCHAR(140),
     OUT p_tx_id       BIGINT UNSIGNED
 )
 BEGIN
@@ -187,10 +189,10 @@ BEGIN
 
         INSERT INTO transacciones
             (tipo, cuenta_origen_id, cuenta_destino_id, monto, estado,
-             puntaje_riesgo, ip, dispositivo_id, clave_idempotencia)
+             puntaje_riesgo, ip, dispositivo_id, clave_idempotencia, mensaje)
         VALUES
             ('transferencia', p_origen, p_destino, p_monto, p_estado,
-             p_puntaje, p_ip, p_dispositivo, p_idem);
+             p_puntaje, p_ip, p_dispositivo, p_idem, NULLIF(TRIM(p_mensaje), ''));
         SET p_tx_id = LAST_INSERT_ID();
 
         COMMIT;

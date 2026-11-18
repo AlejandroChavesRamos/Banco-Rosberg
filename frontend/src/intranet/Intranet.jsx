@@ -1,17 +1,20 @@
 // =====================================================================
 // Intranet Rosberg (empleados): rutas, menu lateral segun el rol y login.
 // =====================================================================
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { Navigate, NavLink, Outlet, Route, Routes, useLocation, useNavigate } from 'react-router-dom'
+import { api } from '../api'
 import CambiarClave from '../cliente/CambiarClave'
 import { ConfigurarDosPasos, PasoCodigo } from '../componentes/DosPasos'
 import Icono from '../componentes/Icono'
 import IntroLogo from '../componentes/IntroLogo'
 import NoEncontrado from '../componentes/NoEncontrado'
+import { usePeriodico } from '../componentes/usePeriodico'
 import { Aviso, Boton, Campo, Logo, PantallaCargando, Volver } from '../componentes/ui'
 import fotoIntranet from '../imagenes/intranet.jpg'
 import { useSesion } from '../sesion'
 import Alertas from './Alertas'
+import Atencion from './Atencion'
 import Auditoria from './Auditoria'
 import Empleados from './Empleados'
 import Investigar from './Investigar'
@@ -26,7 +29,8 @@ const MENU = [
   { a: '/intranet/alertas', texto: 'Alertas', icono: 'alerta', roles: ['analista', 'admin'] },
   { a: '/intranet/investigar', texto: 'Investigar cuenta', icono: 'lupa', roles: ['analista', 'admin'] },
   { a: '/intranet/ventanilla', texto: 'Ventanilla', icono: 'ventanilla', roles: ['cajero', 'admin'] },
-  { a: '/intranet/solicitudes', texto: 'Solicitudes', icono: 'buzon', roles: ['cajero', 'analista', 'admin'] },
+  { a: '/intranet/atencion', texto: 'Atención al cliente', icono: 'chat', roles: ['cajero', 'analista', 'admin'], contador: 'atencion' },
+  { a: '/intranet/solicitudes', texto: 'Solicitudes', icono: 'buzon', roles: ['cajero', 'analista', 'admin'], contador: 'solicitudes' },
   { a: '/intranet/empleados', texto: 'Empleados', icono: 'empleados', roles: ['admin'] },
   { a: '/intranet/reglas', texto: 'Reglas antifraude', icono: 'ajustes', roles: ['admin'] },
   { a: '/intranet/auditoria', texto: 'Auditoría', icono: 'cadena', roles: ['admin'] },
@@ -50,6 +54,7 @@ export default function Intranet() {
         <Route path="reglas" element={<Reglas />} />
         <Route path="auditoria" element={<Auditoria />} />
         <Route path="solicitudes" element={<Solicitudes />} />
+        <Route path="atencion" element={<Atencion />} />
         <Route path="cambiar-clave" element={<div className="max-w-md"><CambiarClave /></div>} />
         <Route
           path="seguridad"
@@ -76,6 +81,21 @@ function Marco() {
   const { usuario, cargando, cerrarSesion } = useSesion()
   const ubicacion = useLocation()
   const navegar = useNavigate()
+  // Avisos del menu: clientes esperando asesor + mensajes sin leer de mis
+  // tiquetes, y solicitudes de visitantes por responder
+  const [contadores, setContadores] = useState({})
+  const puedeVerContadores = Boolean(usuario && !usuario.debeCambiar && !usuario.debeConfigurar2fa)
+  function cargarContadores() {
+    if (!puedeVerContadores) return
+    api.get('/atencion/resumen')
+      .then((r) => setContadores((c) => ({ ...c, atencion: r.nuevos + r.mios_no_leidos })))
+      .catch(() => {})
+    api.get('/publico/solicitudes')
+      .then((l) => setContadores((c) => ({ ...c, solicitudes: l.length })))
+      .catch(() => {})
+  }
+  usePeriodico(cargarContadores, 15000)
+  useEffect(cargarContadores, [puedeVerContadores]) // apenas inicia sesion, sin esperar 15 s
 
   if (cargando) return <PantallaCargando />
   if (!usuario) return <Navigate to="/intranet/login" replace />
@@ -115,7 +135,12 @@ function Marco() {
                 }
               >
                 <Icono nombre={m.icono} />
-                {m.texto}
+                <span className="flex-1">{m.texto}</span>
+                {m.contador && contadores[m.contador] > 0 && (
+                  <span className="grid h-5 min-w-[1.25rem] place-items-center rounded-full bg-oro px-1.5 text-[11px] font-bold text-marca-900">
+                    {contadores[m.contador]}
+                  </span>
+                )}
               </NavLink>
             ))}
         </nav>

@@ -31,7 +31,7 @@ Hay tres esquemas:
 
 | Esquema | Motor | Contenido |
 |---|---|---|
-| `banco` | MySQL | Los datos del banco (14 tablas, 2 vistas, 3 funciones, 6 procedimientos, 5 triggers) |
+| `banco` | MySQL | Los datos del banco (17 tablas, 2 vistas, 3 funciones, 6 procedimientos, 5 triggers) |
 | `banco_sim` | MySQL | La "hoja de respuestas" del simulador (5 tablas). Un banco real no tendría esto; por eso está aparte |
 | `neo4j` | Neo4j | El grafo de relaciones |
 
@@ -59,6 +59,12 @@ erDiagram
     CUENTAS ||--o{ ALERTAS_FRAUDE : "recibe"
     TRANSACCIONES |o--o{ ALERTAS_FRAUDE : "origina"
     USUARIOS |o--o{ ALERTAS_FRAUDE : "resuelve (analista)"
+    USUARIOS ||--o{ TIQUETES : "pide ayuda (cliente)"
+    USUARIOS |o--o{ TIQUETES : "atiende (asesor)"
+    TIQUETES ||--o{ MENSAJES_TIQUETE : "contiene"
+    USUARIOS ||--o{ MENSAJES_TIQUETE : "escribe"
+    SOLICITUDES_PUBLICAS ||--o{ RESPUESTAS_SOLICITUD : "recibe"
+    USUARIOS ||--o{ RESPUESTAS_SOLICITUD : "responde (empleado)"
 
     USUARIOS {
         bigint id PK
@@ -136,6 +142,7 @@ erDiagram
         bigint dispositivo_id FK
         bigint ejecutada_por FK
         varchar clave_idempotencia UK
+        varchar mensaje "nota del que envia"
         datetime creada_en
         datetime resuelta_en
         bigint resuelta_por FK
@@ -209,9 +216,36 @@ erDiagram
         boolean atendida
         datetime creada_en
     }
+    TIQUETES {
+        bigint id PK
+        bigint cliente_id FK
+        enum tema
+        varchar asunto
+        enum estado "nuevo en_atencion cerrado"
+        bigint asesor_id FK
+        tinyint calificacion "1 a 5"
+        bigint visto_cliente_id
+        bigint visto_asesor_id
+        datetime actualizado_en
+    }
+    MENSAJES_TIQUETE {
+        bigint id PK
+        bigint tiquete_id FK
+        bigint autor_id FK
+        varchar texto
+        datetime creado_en
+    }
+    RESPUESTAS_SOLICITUD {
+        bigint id PK
+        bigint solicitud_id FK
+        bigint autor_id FK
+        varchar texto
+        enum estado_envio "pendiente enviado fallido"
+        datetime enviado_en
+    }
 ```
 
-`REGLAS_FRAUDE`, `CONFIGURACION`, `AUDITORIA` y `SOLICITUDES_PUBLICAS` no tienen relaciones de clave foránea a propósito: las dos primeras son parámetros del sistema, la auditoría debe conservar el registro aunque la fila a la que se refiere cambie y las solicitudes las deja cualquier visitante, que todavía no es cliente.
+`REGLAS_FRAUDE`, `CONFIGURACION`, `AUDITORIA` y `SOLICITUDES_PUBLICAS` no tienen relaciones de clave foránea a propósito: las dos primeras son parámetros del sistema, la auditoría debe conservar el registro aunque la fila a la que se refiere cambie y las solicitudes las deja cualquier visitante, que todavía no es cliente (sus respuestas sí apuntan a la solicitud y al empleado que respondió).
 
 ---
 
@@ -326,6 +360,7 @@ Depósitos, retiros y transferencias. **Solo se insertan con procedimientos alma
 | `dispositivo_id` | BIGINT UNSIGNED | FK → dispositivos | |
 | `ejecutada_por` | BIGINT UNSIGNED | FK → usuarios | Cajero, si fue en ventanilla |
 | `clave_idempotencia` | VARCHAR(64) | UK | Evita duplicar una operación por doble clic o reintento |
+| `mensaje` | VARCHAR(140) | NULL | Nota opcional del que envía, como en Nequi (“Para el almuerzo”). La ven quien envía, quien recibe y el analista. Inmutable |
 | `creada_en` | DATETIME(6) | NN | Con microsegundos |
 | `resuelta_en` / `resuelta_por` | DATETIME(6) / FK → usuarios | | Cuándo y qué analista resolvió una retenida |
 
@@ -422,6 +457,50 @@ Lo que dejan los visitantes **sin iniciar sesión** en la página de inicio: ped
 
 Índices: `(ip, creada_en)` para contar las solicitudes recientes de una IP y `(atendida, creada_en)` para la bandeja de pendientes.
 
+### `tiquetes`
+Una conversación de ayuda entre un **cliente** y un **asesor** (cualquier empleado). Se crea con `init/08_mensajeria.sh`.
+
+| Columna | Tipo | Restricciones | Descripción |
+|---|---|---|---|
+| `id` | BIGINT UNSIGNED | PK | |
+| `cliente_id` | BIGINT UNSIGNED | FK → usuarios | Quién pide ayuda |
+| `tema` | ENUM | NN | `cuentas`, `transferencias`, `retiros`, `seguridad`, `otro` |
+| `asunto` | VARCHAR(120) | NN | |
+| `estado` | ENUM | NN | `nuevo` (nadie lo ha tomado) → `en_atencion` → `cerrado` |
+| `asesor_id` | BIGINT UNSIGNED | FK → usuarios, NULL | El empleado que pulsó *Atender*; solo él escribe |
+| `calificacion` | TINYINT UNSIGNED | `CHECK 1..5`, NULL | La pone el cliente al cerrar (o después) |
+| `visto_cliente_id` / `visto_asesor_id` | BIGINT UNSIGNED | | Último mensaje que cada lado ya vio. Así se cuentan los “sin leer” sin una tabla extra |
+| `creado_en` / `actualizado_en` | DATETIME(6) | | `actualizado_en` = último mensaje (ordena la bandeja) |
+| `cerrado_en` / `cerrado_por` | DATETIME(6) / FK → usuarios | NULL | |
+
+Índices: `(cliente_id, actualizado_en)` para la lista del cliente, `(estado, actualizado_en)` para la cola de empleados y `(asesor_id, estado)` para “Mis tiquetes”.
+
+### `mensajes_tiquete`
+Los mensajes de cada conversación. **Solo se insertan**: la app no tiene permiso para editarlos ni borrarlos, porque son la evidencia de lo que el banco le dijo al cliente.
+
+| Columna | Tipo | Descripción |
+|---|---|---|
+| `id` | BIGINT UNSIGNED PK | También sirve de “cursor”: las pantallas piden `?despues_de=<último id>` y reciben solo lo nuevo |
+| `tiquete_id` | FK → tiquetes | |
+| `autor_id` | FK → usuarios | El cliente o el asesor |
+| `texto` | VARCHAR(1000) | |
+| `creado_en` | DATETIME(6) | |
+
+Índice `(autor_id, creado_en)`: permite limitar a 20 mensajes por minuto por persona.
+
+### `respuestas_solicitud`
+Lo que un empleado responde a una solicitud pública. El visitante no tiene cuenta, así que la respuesta **se le envía por correo** (en desarrollo, a Mailpit).
+
+| Columna | Tipo | Descripción |
+|---|---|---|
+| `id` | BIGINT UNSIGNED PK | |
+| `solicitud_id` | FK → solicitudes_publicas | |
+| `autor_id` | FK → usuarios | El empleado que respondió |
+| `texto` | VARCHAR(2000) | No se puede cambiar después de guardado |
+| `estado_envio` | ENUM | `pendiente` → `enviado` o `fallido` |
+| `error_envio` | VARCHAR(255) NULL | Por qué falló (servidor de correo caído…) |
+| `creado_en` / `enviado_en` | DATETIME(6) | |
+
 ### Vistas
 
 | Vista | Contenido |
@@ -437,7 +516,7 @@ Lo que dejan los visitantes **sin iniciar sesión** en la página de inicio: ped
 
 | Procedimiento | Qué hace | Quién lo puede ejecutar |
 |---|---|---|
-| `sp_transferir` | Bloquea las dos cuentas con `SELECT … FOR UPDATE`, valida estado y saldo, mueve el dinero (si está aprobada) e inserta la transacción, todo en una transacción ACID. Respeta la clave de idempotencia | `banco_app` |
+| `sp_transferir` | Bloquea las dos cuentas con `SELECT … FOR UPDATE`, valida estado y saldo, mueve el dinero (si está aprobada) e inserta la transacción con su mensaje opcional, todo en una transacción ACID. Respeta la clave de idempotencia | `banco_app` |
 | `sp_depositar` | Suma saldo a una cuenta activa y registra el depósito | `banco_app` |
 | `sp_retirar` | Igual que transferir, pero con una sola cuenta | `banco_app` |
 | `sp_resolver_retenida` | El analista aprueba (mueve el dinero) o rechaza una transacción retenida | `banco_app` |
@@ -462,7 +541,7 @@ Los errores de negocio se lanzan con `SIGNAL SQLSTATE '45000'` ("Saldo insuficie
 | `trg_auditoria_no_update` | auditoria, BEFORE UPDATE | Prohíbe modificar |
 | `trg_auditoria_no_delete` | auditoria, BEFORE DELETE | Prohíbe borrar |
 | `trg_tx_no_delete` | transacciones, BEFORE DELETE | Prohíbe borrar transacciones |
-| `trg_tx_campos_inmutables` | transacciones, BEFORE UPDATE | Prohíbe cambiar monto, tipo, cuentas o fecha (solo el estado puede cambiar) |
+| `trg_tx_campos_inmutables` | transacciones, BEFORE UPDATE | Prohíbe cambiar monto, tipo, cuentas, fecha o mensaje (solo el estado puede cambiar) |
 
 ---
 
@@ -473,8 +552,8 @@ Cada componente se conecta con su propio usuario y el **mínimo privilegio** que
 | Usuario | Lo usa | Puede | No puede |
 |---|---|---|---|
 | `root` | Solo administración (Workbench) | Todo | — |
-| `banco_app` | El backend (API) | Leer; insertar usuarios, cuentas, llaves, alertas…; actualizar **solo algunas columnas** (por ejemplo, el `estado` de una cuenta y las columnas de seguridad de `usuarios`); ejecutar los 5 procedimientos de la app y las 3 funciones; crear solicitudes públicas y marcarlas como atendidas | Cambiar `saldo` directamente, editar o borrar una solicitud, cambiar el `rol` de un usuario, borrar cualquier fila, insertar transacciones sin procedimiento, ejecutar `sp_cargar_historico`, leer `banco_sim` |
-| `banco_reportes` | Analistas en Workbench (solo lectura) | Leer vistas, transacciones, alertas, reglas, auditoría y solicitudes públicas | Ver la tabla `usuarios` (datos personales y hashes), modificar nada |
+| `banco_app` | El backend (API) | Leer; insertar usuarios, cuentas, llaves, alertas…; actualizar **solo algunas columnas** (por ejemplo, el `estado` de una cuenta y las columnas de seguridad de `usuarios`); ejecutar los 5 procedimientos de la app y las 3 funciones; crear solicitudes públicas y marcarlas como atendidas; crear tiquetes y mensajes, y cambiar solo el estado, el asesor, la calificación y los “vistos” de un tiquete | Cambiar `saldo` directamente, editar o borrar una solicitud, editar o borrar un mensaje o una respuesta ya enviada, cambiar de quién es un tiquete, cambiar el `rol` de un usuario, borrar cualquier fila, insertar transacciones sin procedimiento, ejecutar `sp_cargar_historico`, leer `banco_sim` |
+| `banco_reportes` | Analistas en Workbench (solo lectura) | Leer vistas, transacciones, alertas, reglas, auditoría, solicitudes públicas y las columnas de medición de `tiquetes` (estado, tema, calificación, fechas) | Leer las conversaciones (`mensajes_tiquete`), ver la tabla `usuarios` (datos personales y hashes), modificar nada |
 | `banco_simulador` | El simulador | Leer el banco; crear clientes y cuentas con fechas pasadas; ejecutar `sp_cargar_historico`; todo en `banco_sim` | Cambiar saldos, borrar, fechar movimientos en el futuro |
 
 Ejemplos de privilegios por columna (`03_usuarios.sh`):
@@ -607,6 +686,13 @@ Cada índice responde a una consulta real: movimientos de una cuenta y reglas po
 
 ### Privilegios mínimos y separación de funciones
 La app, los reportes y el simulador usan usuarios distintos. Si alguien comprometiera la app, no podría borrar transacciones, cambiar saldos, escalar privilegios ni leer la hoja de respuestas del simulador.
+
+### Mensajería: tablas de solo inserción y “cursores” de lectura
+Las conversaciones se guardan como **una fila por mensaje** (no un texto que crece): cada mensaje tiene su autor y su hora, y se puede pedir solo lo nuevo con `id > último visto`. Ese mismo `id` sirve para los “sin leer”: cada tiquete guarda el último mensaje que vio cada lado (`visto_cliente_id`, `visto_asesor_id`) y los no leídos son los de la otra persona con un `id` mayor.
+
+Para que dos empleados no tomen el mismo tiquete, *Atender* es un solo `UPDATE … SET asesor_id = ? WHERE id = ? AND estado = 'nuevo'`: si dos lo pulsan a la vez, MySQL solo cambia la fila para el primero y el segundo recibe 0 filas afectadas (409).
+
+Las respuestas por correo se **guardan antes de enviarse**. Si el servidor de correo está caído, la respuesta queda como `fallido` y se reintenta: el banco no pierde lo que escribió el empleado ni deja de funcionar por culpa del correo.
 
 ### Formularios públicos sin abrir la puerta al abuso
 `solicitudes_publicas` es la única tabla en la que se puede escribir **sin iniciar sesión**. Por eso guarda la IP y la API rechaza (429) la sexta solicitud de una misma IP en una hora; el usuario de la app solo puede insertar y marcar `atendida`, nunca editar ni borrar lo que dejó el visitante.

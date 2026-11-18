@@ -42,6 +42,11 @@ class Settings(BaseSettings):
     # Produccion: oculta /docs y otros detalles internos
     produccion: bool = False
 
+    # Correo saliente (en desarrollo, Mailpit: un buzon de prueba)
+    smtp_host: str = "mailpit"
+    smtp_puerto: int = 1025
+    correo_remitente: str = "Banco Rosberg <no-responder@rosberg.co>"
+
     # Simulador (Fase 3)
     api_url: str = "http://backend:8000"
     sim_password_clientes: str = ""

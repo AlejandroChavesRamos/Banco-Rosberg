@@ -20,6 +20,16 @@ Nombre = Annotated[str, Field(min_length=3, max_length=120)]
 TipoCuenta = Literal["ahorros", "corriente"]
 
 
+def _texto_limpio(v: str | None, obligatorio: bool = True) -> str | None:
+    """Quita espacios sobrantes y caracteres de control (salvo saltos de linea)."""
+    if v is None:
+        return None
+    v = "".join(c for c in v if c == "\n" or c.isprintable()).strip()
+    if obligatorio and not v:
+        raise ValueError("No puede estar vacio")
+    return v or None
+
+
 # ---------------------------- Autenticacion ----------------------------
 class RegistroEntrada(BaseModel):
     nombre: Nombre
@@ -126,6 +136,13 @@ class TransferenciaEntrada(BaseModel):
     monto: Monto
     codigo_2fa: str | None = Field(default=None, pattern=r"^\d{6}$",
                                    description="Solo si el banco lo exige para montos grandes")
+    mensaje: str | None = Field(default=None, max_length=140,
+                                description="Nota para quien recibe, como en Nequi (\"Para el almuerzo\")")
+
+    @field_validator("mensaje")
+    @classmethod
+    def _mensaje(cls, v):
+        return _texto_limpio(v, obligatorio=False)
 
 
 class CodigoRetiroEntrada(BaseModel):
@@ -184,3 +201,48 @@ class ReglaCambio(BaseModel):
     peso: int | None = Field(default=None, ge=0, le=100)
     umbral: Decimal | None = Field(default=None, ge=0, max_digits=10, decimal_places=2)
     activa: bool | None = None
+
+
+# ------------------------------ Mensajeria -----------------------------
+TemaTiquete = Literal["cuentas", "transferencias", "retiros", "seguridad", "otro"]
+
+
+class NuevoTiquete(BaseModel):
+    tema: TemaTiquete
+    asunto: str = Field(min_length=3, max_length=120)
+    mensaje: str = Field(min_length=1, max_length=1000)
+
+    @field_validator("asunto", "mensaje")
+    @classmethod
+    def _limpio(cls, v):
+        return _texto_limpio(v)
+
+
+class MensajeEntrada(BaseModel):
+    texto: str = Field(min_length=1, max_length=1000)
+
+    @field_validator("texto")
+    @classmethod
+    def _limpio(cls, v):
+        return _texto_limpio(v)
+
+
+class CierreTiquete(BaseModel):
+    calificacion: int | None = Field(default=None, ge=1, le=5, description="Solo el cliente califica")
+
+
+class Calificacion(BaseModel):
+    calificacion: int = Field(ge=1, le=5)
+
+
+class Reasignacion(BaseModel):
+    asesor_id: int
+
+
+class RespuestaSolicitud(BaseModel):
+    texto: str = Field(min_length=1, max_length=2000)
+
+    @field_validator("texto")
+    @classmethod
+    def _limpio(cls, v):
+        return _texto_limpio(v)

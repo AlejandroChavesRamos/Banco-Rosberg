@@ -5,6 +5,7 @@ Banco simulado con **detector de fraude**. Proyecto final de Bases de Datos.
 - **MySQL 8.4**: la fuente de verdad (cuentas, saldos, transacciones, auditoría).
 - **Neo4j 5.26**: el grafo de relaciones para detectar fraude (ciclos de dinero, dispositivos compartidos, cuentas mula).
 - **Backend** en Python (FastAPI) y **frontend** en React.
+- **Mailpit**: un buzón de correo de prueba para los correos que envía el banco.
 - **Todo corre en contenedores Docker**: no hay que instalar MySQL, Neo4j, Python ni Node.
 
 > El modelo de datos, el diccionario de datos y las decisiones de diseño están en [docs/BASE_DE_DATOS.md](docs/BASE_DE_DATOS.md).
@@ -41,7 +42,7 @@ Banco simulado con **detector de fraude**. Proyecto final de Bases de Datos.
 
 **No necesitas instalar** MySQL, Neo4j, Python ni Node: vienen dentro de los contenedores.
 
-Estos puertos de tu PC deben estar libres: **3307, 7475, 7688, 8000 y 5173** (y **80 y 443** solo para el modo producción). Usamos 3307 y no 3306 para no chocar con un MySQL instalado en el PC.
+Estos puertos de tu PC deben estar libres: **3307, 7475, 7688, 8000, 5173 y 8025** (y **80 y 443** solo para el modo producción). Usamos 3307 y no 3306 para no chocar con un MySQL instalado en el PC.
 
 Comprueba que Docker funciona (Docker Desktop debe estar **abierto**, con *Engine running* en verde):
 
@@ -111,7 +112,7 @@ docker compose up -d --build
 
 La **primera vez** tarda varios minutos: descarga las imágenes de MySQL y Neo4j y construye las del backend y el frontend. Las siguientes veces basta con `docker compose up -d`.
 
-Comprueba que los **4 contenedores** estén sanos:
+Comprueba que los **5 contenedores** estén sanos:
 
 ```powershell
 docker compose ps
@@ -121,6 +122,7 @@ docker compose ps
 NAME             STATUS
 banco_backend    Up (healthy)
 banco_frontend   Up (healthy)
+banco_mailpit    Up (healthy)
 banco_mysql      Up (healthy)
 banco_neo4j      Up (healthy)
 ```
@@ -169,6 +171,7 @@ Tarda unos 4 minutos y solo se puede ejecutar una vez. Al terminar muestra la li
 | **Intranet Rosberg** | http://localhost:5173/intranet | Empleados: cajero, analista de fraude y administrador. |
 | **API (documentación interactiva)** | http://localhost:8000/docs | Para probar la API directamente. El login exige `"portal": "app"` o `"portal": "intranet"`. |
 | **Estado del sistema** | http://localhost:8000/salud | Estado de la API y de cada base. |
+| **Buzón de correos (Mailpit)** | http://localhost:8025 | Los correos que envía el banco. No salen a internet: llegan aquí. |
 
 Recorrido sugerido:
 
@@ -178,8 +181,10 @@ Recorrido sugerido:
 4. **App**: registra una llave (celular o correo) y transfiere a otro cliente.
 5. **App** → Retirar sin tarjeta: genera un código; canjéalo como cajero.
 6. **Intranet** (analista → Alertas): revisa alertas, abre el grafo de una cuenta, lanza el barrido del historial.
-7. **App** (sin iniciar sesión): deja tu correo en *Contáctanos*; en la **Intranet → Solicitudes** aparece para que un empleado la atienda.
+7. **App** (sin iniciar sesión): deja tu correo en *Contáctanos*. En la **Intranet → Solicitudes** ábrela y respóndela: la respuesta llega por correo a **http://localhost:8025**.
 8. **App** → *¿Olvidaste tu contraseña?*: el cliente la cambia demostrando su cédula y su celular (el banco no envía correos). En **Perfil** ve sus datos enmascarados.
+9. **App → Ayuda**: abre una conversación con un asesor. En la **Intranet → Atención al cliente** un empleado pulsa *Atender* y le responde; el chat se actualiza solo en las dos pantallas. Al finalizar, el cliente califica la atención (el promedio aparece en el Tablero).
+10. **App → Enviar dinero**: escribe un mensaje opcional (“Para el almuerzo”). Quien recibe lo ve en sus movimientos.
 
 ---
 
@@ -256,7 +261,7 @@ docker compose up -d
 | Apagar todo (los datos se conservan) | `docker compose down` |
 | **Borrar todo, incluidos los datos** | `docker compose down -v` ⚠️ sin vuelta atrás |
 
-Los datos viven en **volúmenes** (`mysql_data`, `neo4j_data`), no en los contenedores: `down` borra los contenedores pero no los datos. Solo `down -v` los elimina.
+Los datos viven en **volúmenes** (`mysql_data`, `neo4j_data`, `mailpit_data`), no en los contenedores: `down` borra los contenedores pero no los datos. Solo `down -v` los elimina.
 
 ---
 
@@ -275,6 +280,7 @@ Luego aplica lo que tu base no tenga todavía:
 |---|---|---|
 | Seguridad (2FA, avisos de inicio de sesión) | Error `Unknown column 'totp_ultimo_paso'` o falta la tabla `avisos_login` | Ver abajo ① |
 | Solicitudes públicas (tarjeta, contacto, empleo) | Error `Table 'banco.solicitudes_publicas' doesn't exist` | Ver abajo ② |
+| Mensajería (chat de ayuda, respuestas por correo, mensaje en transferencias) | Error `Table 'banco.tiquetes' doesn't exist` o `Incorrect number of arguments for PROCEDURE banco.sp_transferir` | Ver abajo ③ |
 
 ① Seguridad (en PowerShell):
 
@@ -287,6 +293,14 @@ docker compose exec mysql bash /docker-entrypoint-initdb.d/03_usuarios.sh
 
 ```powershell
 docker compose exec mysql bash /docker-entrypoint-initdb.d/07_solicitudes.sh
+```
+
+③ Mensajería (después de ②; el orden importa porque una tabla nueva apunta a `solicitudes_publicas`):
+
+```powershell
+Get-Content db/mysql/migraciones/2026-11-17_mensaje_transferencias.sql | docker compose exec -T mysql sh -c 'mysql -uroot -p"$MYSQL_ROOT_PASSWORD" banco'
+docker compose exec mysql bash /docker-entrypoint-initdb.d/03_usuarios.sh
+docker compose exec mysql bash /docker-entrypoint-initdb.d/08_mensajeria.sh
 ```
 
 Después reinicia el backend: `docker compose restart backend`.
@@ -304,9 +318,9 @@ ProyectoFinalBase/
 │   ├── Dockerfile
 │   └── app/
 │       ├── main.py             ← arranque de la API
-│       ├── rutas/              ← endpoints: auth, cliente, cajero, analista, admin, tablero, seguridad, publico
+│       ├── rutas/              ← endpoints: auth, cliente, cajero, analista, admin, tablero, seguridad, publico, ayuda
 │       ├── seguridad/          ← Argon2, JWT, cifrado AES-GCM, 2FA, roles
-│       ├── servicios/          ← lógica del banco, auditoría, sincronización con Neo4j
+│       ├── servicios/          ← lógica del banco, auditoría, sincronización con Neo4j, envío de correos
 │       ├── antifraude/         ← motor en tiempo real y barrido del historial
 │       └── simulador/          ← generador de datos y fraudes de prueba
 ├── frontend/                   ← pantallas en React (App + Intranet)
@@ -314,7 +328,7 @@ ProyectoFinalBase/
 │   └── src/
 │       ├── cliente/            ← pantallas de la App Rosberg
 │       ├── intranet/           ← pantallas de la Intranet
-│       ├── componentes/        ← piezas comunes (botones, íconos, 2FA, logo animado)
+│       ├── componentes/        ← piezas comunes (botones, íconos, 2FA, logo animado, chat)
 │       └── imagenes/           ← fotos de las pantallas (créditos en CREDITOS.md)
 ├── nginx/                      ← configuración de producción (HTTPS, límites, cabeceras)
 ├── db/
@@ -338,6 +352,7 @@ ProyectoFinalBase/
 | Workbench: *Access denied* | Usa el puerto 3307. Si cambiaste el `.env` después del primer arranque, las contraseñas viejas siguen en el volumen. |
 | Neo4j: *Connection to instance failed* | Usa `bolt://127.0.0.1:7688` (no `localhost`, no `neo4j+s://`). |
 | `/bin/bash^M: bad interpreter` | Un `.sh` quedó con saltos de línea de Windows. En VS Code cambia `CRLF` → `LF`. El `.gitattributes` del proyecto lo evita al clonar. |
+| Una respuesta a una solicitud dice *No se pudo enviar el correo* | Mailpit está apagado: `docker compose up -d mailpit` y pulsa **Reintentar** en la conversación. La respuesta no se pierde. |
 | `https://localhost` no carga | Estás en modo desarrollo: usa `http://localhost:5173/app` o sigue la sección 10. |
 | El usuario quedó bloqueado | 5 intentos fallidos (contraseña, código 2FA o recuperación) bloquean el usuario 15 minutos; el mensaje dice cuántos minutos faltan. Un empleado puede pedirle al admin una contraseña temporal. |
 | `Table ... doesn't exist` o `Unknown column` tras un `git pull` | Tu base es anterior al cambio: sigue la sección 12. |

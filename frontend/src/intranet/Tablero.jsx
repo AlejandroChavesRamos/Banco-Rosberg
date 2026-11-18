@@ -42,6 +42,11 @@ export default function Tablero() {
         <Indicador titulo="Cuentas congeladas" valor={i.cuentas_congeladas} />
         <Indicador titulo="Clientes" valor={i.clientes.toLocaleString('es-CO')} />
         <Indicador titulo="Cuentas" valor={i.cuentas.toLocaleString('es-CO')} />
+        <Indicador titulo="Tiquetes de ayuda abiertos" valor={i.tiquetes_abiertos}
+                   nota={`${i.tiquetes_sin_asignar} esperando asesor`} destacado={i.tiquetes_sin_asignar > 0} />
+        <Indicador titulo="Satisfacción de los clientes" valor={i.satisfaccion ? `${Number(i.satisfaccion).toFixed(1)} / 5` : '—'}
+                   nota={`${i.calificaciones} calificaciones`} />
+        <Indicador titulo="Solicitudes por responder" valor={i.solicitudes_pendientes} />
         <Indicador titulo="Dinero en el banco" valor={cop(i.dinero_total)} ancho />
       </div>
 
