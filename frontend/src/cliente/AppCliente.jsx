@@ -17,6 +17,7 @@ import Carreras from './Carreras'
 import Inicio from './Inicio'
 import Llaves from './Llaves'
 import Login from './Login'
+import Metas from './Metas'
 import Perfil from './Perfil'
 import Recuperar from './Recuperar'
 import Registro from './Registro'
@@ -40,6 +41,7 @@ export default function AppCliente() {
         <Route path="transferir" element={<Transferir />} />
         <Route path="retiro" element={<Retiro />} />
         <Route path="llaves" element={<Llaves />} />
+        <Route path="metas" element={<Metas />} />
         <Route path="perfil" element={<Perfil />} />
         <Route path="cambiar-clave" element={<CambiarClave />} />
         <Route path="seguridad" element={<Seguridad />} />
@@ -55,6 +57,7 @@ const MENU = [
   { a: '/app', texto: 'Inicio', icono: 'inicio' },
   { a: '/app/transferir', texto: 'Enviar dinero', icono: 'enviar' },
   { a: '/app/retiro', texto: 'Retirar sin tarjeta', icono: 'codigo' },
+  { a: '/app/metas', texto: 'Metas', icono: 'meta' },
   { a: '/app/llaves', texto: 'Mis llaves', icono: 'llave' },
   { a: '/app/seguridad', texto: 'Seguridad', icono: 'escudo' },
   { a: '/app/ayuda', texto: 'Ayuda', icono: 'chat', contador: true },
@@ -95,14 +98,14 @@ function Marco() {
             <Logo />
           </Link>
           {!usuario.debeCambiar && (
-            <nav className="order-3 flex w-full gap-1 overflow-x-auto md:order-none md:w-auto">
+            <nav className="sin-barras order-3 flex w-full gap-1 overflow-x-auto p-1.5 md:order-none md:w-auto">
               {MENU.map((m) => (
                 <NavLink
                   key={m.a}
                   to={m.a}
                   end={m.a === '/app'}
                   className={({ isActive }) =>
-                    `flex items-center gap-2 whitespace-nowrap rounded-full px-4 py-2 text-sm font-medium transition-colors ${
+                    `boton-vivo flex items-center gap-2 whitespace-nowrap rounded-full px-4 py-2 text-sm font-medium ${
                       isActive ? 'bg-marca-700 text-white' : 'text-marca-700 hover:bg-marca-100'
                     }`
                   }
@@ -123,7 +126,7 @@ function Marco() {
             <NavLink
               to="/app/perfil"
               className={({ isActive }) =>
-                `hidden items-center gap-2.5 rounded-full py-1 pl-1 pr-4 text-sm font-semibold text-marca-700 transition-colors sm:flex ${
+                `boton-vivo hidden items-center gap-2.5 rounded-full py-1 pl-1 pr-4 text-sm font-semibold text-marca-700 sm:flex ${
                   isActive ? 'bg-marca-100' : 'hover:bg-marca-50'
                 }`
               }
@@ -147,7 +150,9 @@ function Marco() {
       {/* <Outlet /> es el "hueco" donde se dibuja la pantalla actual */}
       <main className="mx-auto max-w-6xl px-6 py-8">
         {!usuario.debeCambiar && <AvisosSeguridad />}
-        <Outlet />
+        <div key={ubicacion.pathname} className="pantalla-entra">
+          <Outlet />
+        </div>
       </main>
     </div>
   )

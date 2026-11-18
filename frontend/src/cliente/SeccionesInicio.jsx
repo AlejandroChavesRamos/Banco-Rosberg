@@ -278,7 +278,7 @@ function SeccionPreguntas() {
                 <Aparecer retraso={i * 80} className="rounded-3xl bg-white">
                   <h3>
                     <button
-                      className="flex w-full items-center justify-between gap-6 rounded-3xl px-7 py-6 text-left text-lg font-medium text-marca-800 transition-colors hover:text-marca-500"
+                      className="no-crecer flex w-full items-center justify-between gap-6 rounded-3xl px-7 py-6 text-left text-lg font-medium text-marca-800 transition-colors hover:text-marca-500"
                       aria-expanded={activa}
                       onClick={() => setAbierta(activa ? -1 : i)}
                     >
@@ -355,7 +355,10 @@ function SeccionContacto() {
         </div>
 
         <div className="mt-14 flex flex-wrap items-center gap-x-8 gap-y-4 border-t border-white/15 pt-8">
-          <Logo claro />
+          <a href="/app/login" aria-label="Banco Rosberg, inicio"
+             onClick={(e) => { e.preventDefault(); window.scrollTo({ top: 0, behavior: 'smooth' }) }}>
+            <Logo claro />
+          </a>
           <p className="text-xs text-white/60">
             © 2026 Banco Rosberg. Proyecto académico: no es una entidad financiera real ni maneja dinero real.
           </p>

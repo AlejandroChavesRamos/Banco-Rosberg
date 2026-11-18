@@ -115,7 +115,7 @@ export default function Alertas() {
 
       <div className="grid gap-5 xl:grid-cols-[380px_1fr]">
         {/* Lista */}
-        <Tarjeta className="max-h-[calc(100vh-200px)] overflow-y-auto p-0">
+        <Tarjeta className="sin-barras max-h-[calc(100vh-200px)] overflow-y-auto p-0">
           <div className="sticky top-0 border-b border-slate-100 bg-white px-4 py-3 text-sm font-semibold">
             {alertas.length} {vista}
           </div>

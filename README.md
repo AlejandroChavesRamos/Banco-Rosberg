@@ -288,6 +288,7 @@ Luego aplica lo que tu base no tenga todavía:
 | Solicitudes públicas (tarjeta, contacto, empleo) | Error `Table 'banco.solicitudes_publicas' doesn't exist` | Ver abajo ② |
 | Mensajería (chat de ayuda, respuestas por correo, mensaje en transferencias) | Error `Table 'banco.tiquetes' doesn't exist` o `Incorrect number of arguments for PROCEDURE banco.sp_transferir` | Ver abajo ③ |
 | Asistente automático | Error `Unknown column 't.asistente_activo'` | Ver abajo ④ |
+| Metas de ahorro | Error `Table 'banco.metas_ahorro' doesn't exist` | Ver abajo ⑤ |
 
 ① Seguridad (en PowerShell):
 
@@ -314,6 +315,12 @@ docker compose exec mysql bash /docker-entrypoint-initdb.d/08_mensajeria.sh
 
 ```powershell
 docker compose exec mysql bash /docker-entrypoint-initdb.d/09_asistente.sh
+```
+
+⑤ Metas de ahorro:
+
+```powershell
+docker compose exec mysql bash /docker-entrypoint-initdb.d/10_metas.sh
 ```
 
 Después reinicia el backend: `docker compose restart backend`.

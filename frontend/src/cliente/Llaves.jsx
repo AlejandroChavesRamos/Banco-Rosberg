@@ -1,6 +1,7 @@
 // Mis llaves: registrar el celular o el correo para recibir transferencias
 import { useEffect, useState } from 'react'
 import { api } from '../api'
+import { useAviso } from '../componentes/Avisos'
 import Icono from '../componentes/Icono'
 import { Aviso, Boton, Selector, Tarjeta, EstadoVacio } from '../componentes/ui'
 import { enmascarar, fechaHora } from '../formato'
@@ -11,6 +12,7 @@ export default function Llaves() {
   const [tipo, setTipo] = useState('celular')
   const [cuenta, setCuenta] = useState('')
   const [mensaje, setMensaje] = useState({ tipo: '', texto: '' })
+  const avisar = useAviso()
   const [cargando, setCargando] = useState(false)
 
   useEffect(() => {
@@ -32,7 +34,7 @@ export default function Llaves() {
     setMensaje({ tipo: '', texto: '' })
     try {
       const r = await api.post('/llaves', { tipo, cuenta })
-      setMensaje({ tipo: 'exito', texto: `Listo: ahora te pueden enviar dinero a ${r.valor}` })
+      avisar(`Llave registrada: ya te pueden enviar dinero a ${r.valor}`)
       cargar()
     } catch (e) {
       setMensaje({ tipo: 'error', texto: e.message })
@@ -45,6 +47,7 @@ export default function Llaves() {
     if (!confirm('¿Desactivar esta llave? Ya no podrán enviarte dinero con ella.')) return
     try {
       await api.delete(`/llaves/${id}`)
+      avisar('Llave desactivada')
       cargar()
     } catch (e) {
       setMensaje({ tipo: 'error', texto: e.message })

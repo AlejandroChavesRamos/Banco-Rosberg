@@ -59,7 +59,8 @@ def buscar_cliente(cedula: str, u: UsuarioActual = Depends(cajero), conn=Depends
 def abrir_cuenta(datos: CuentaVentanilla, request: Request,
                  u: UsuarioActual = Depends(cajero), conn=Depends(obtener_conexion)):
     cliente = _cliente_por_cedula(conn, datos.cedula)
-    total = consultar_uno(conn, "SELECT COUNT(*) AS n FROM cuentas WHERE usuario_id = %s", (cliente["id"],))["n"]
+    total = consultar_uno(conn, "SELECT COUNT(*) AS n FROM cuentas WHERE usuario_id = %s AND estado <> 'cerrada'",
+                          (cliente["id"],))["n"]
     if total >= leer_config(conn, "MAX_CUENTAS_CLIENTE"):
         raise ErrorNegocio(409, "El cliente alcanzo el maximo de cuentas")
     numero = banco.generar_numero_cuenta(conn)

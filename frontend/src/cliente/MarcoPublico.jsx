@@ -31,7 +31,7 @@ export function BarraPublica({ accion = 'registro' }) {
         </nav>
         <Link
           to={accion === 'registro' ? '/app/registro' : '/app/login'}
-          className="boton-vivo ml-auto rounded-full bg-oro px-5 py-2 text-sm font-semibold text-marca-900 hover:bg-oro-claro"
+          className="boton-vivo boton-sombra ml-auto rounded-full bg-oro px-5 py-2 text-sm font-semibold text-marca-900 hover:bg-oro-claro"
         >
           {accion === 'registro' ? 'Abrir cuenta' : 'Ingresar'}
         </Link>

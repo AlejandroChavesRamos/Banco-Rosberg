@@ -10,7 +10,7 @@ export default function NoEncontrado({ volver = '/app/login', textoVolver = 'Ir 
       <p className="mt-3 text-slate-500">
         Puede que la dirección esté mal escrita o que la página se haya movido.
       </p>
-      <Link to={volver} className="boton-vivo mt-8 inline-block rounded-full bg-marca-700 px-7 py-3 text-sm font-semibold text-white hover:bg-marca-800">
+      <Link to={volver} className="boton-vivo boton-sombra mt-8 inline-block rounded-full bg-marca-700 px-7 py-3 text-sm font-semibold text-white hover:bg-marca-800">
         {textoVolver}
       </Link>
     </div>

@@ -47,7 +47,7 @@ export default function Registro() {
           </div>
           <h1 className="font-titulo text-4xl font-bold tracking-tight text-marca-700">¡Bienvenido a Rosberg!</h1>
           <p className="mt-2 text-marca-500">Tu cuenta de ahorros {enmascarar(cuentaCreada)} está lista.</p>
-          <Link to="/app/login" className="boton-vivo mt-8 inline-block w-full rounded-xl bg-marca-700 px-4 py-3 text-sm font-semibold text-white hover:bg-marca-800">
+          <Link to="/app/login" className="boton-vivo boton-sombra mt-8 inline-block w-full rounded-xl bg-marca-700 px-4 py-3 text-sm font-semibold text-white hover:bg-marca-800">
             Iniciar sesión
           </Link>
         </div>
@@ -119,7 +119,7 @@ function MarcoRegistro({ children }) {
             <Link to="/app/login" className="justify-self-center" aria-label="Banco Rosberg, inicio">
               <Logo />
             </Link>
-            <Link to="/app/login" className="boton-vivo justify-self-end rounded-full bg-oro px-5 py-2 text-sm font-semibold text-marca-900 hover:bg-oro-claro">
+            <Link to="/app/login" className="boton-vivo boton-sombra justify-self-end rounded-full bg-oro px-5 py-2 text-sm font-semibold text-marca-900 hover:bg-oro-claro">
               Ingresar
             </Link>
           </div>

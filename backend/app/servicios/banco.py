@@ -2,6 +2,7 @@
 import json
 import re
 import secrets
+from decimal import Decimal
 
 import pymysql
 
@@ -41,6 +42,22 @@ def cuenta_propia(conn, numero: str, usuario_id: int) -> dict:
     if not cuenta or cuenta["usuario_id"] != usuario_id:
         raise ErrorNegocio(404, "Cuenta no encontrada")
     return cuenta
+
+
+def apartado_en_metas(conn, cuenta_id: int) -> Decimal:
+    """Lo que el cliente aparto en metas de ahorro de esta cuenta (no se puede gastar)."""
+    fila = consultar_uno(conn, "SELECT COALESCE(SUM(apartado), 0) AS total FROM metas_ahorro "
+                               "WHERE cuenta_id = %s AND activa", (cuenta_id,))
+    return Decimal(fila["total"])
+
+
+def exigir_disponible(conn, cuenta: dict, monto) -> None:
+    """Rechaza la operacion si el monto toca dinero apartado en metas de ahorro."""
+    apartado = apartado_en_metas(conn, cuenta["id"])
+    disponible = Decimal(cuenta["saldo"]) - apartado
+    if apartado > 0 and Decimal(monto) > disponible:
+        raise ErrorNegocio(400, f"Tienes ${apartado:,.0f} apartado en metas de ahorro. "
+                                f"Disponible para usar: ${max(disponible, 0):,.0f}".replace(",", "."))
 
 
 def exigir_activa(cuenta: dict) -> None:

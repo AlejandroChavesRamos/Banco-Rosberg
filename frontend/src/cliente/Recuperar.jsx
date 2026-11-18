@@ -43,7 +43,7 @@ export default function Recuperar() {
           <div className="confirmado mx-auto mb-4 grid h-16 w-16 place-items-center rounded-full bg-marca-100 text-3xl text-marca-700">✓</div>
           <h1 className="text-4xl font-bold tracking-tight text-marca-700">Contraseña actualizada</h1>
           <p className="mt-2 text-marca-500">Ya puedes ingresar con tu contraseña nueva.</p>
-          <Link to="/app/login" className="boton-vivo mt-8 inline-block w-full rounded-xl bg-marca-700 px-4 py-3 text-sm font-semibold text-white hover:bg-marca-800">
+          <Link to="/app/login" className="boton-vivo boton-sombra mt-8 inline-block w-full rounded-xl bg-marca-700 px-4 py-3 text-sm font-semibold text-white hover:bg-marca-800">
             Ingresar
           </Link>
         </div>

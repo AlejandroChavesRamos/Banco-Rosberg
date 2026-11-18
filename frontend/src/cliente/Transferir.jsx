@@ -237,7 +237,16 @@ function Resultado({ r, onOtra }) {
     <Tarjeta className="p-0">
       <div className="px-6 pb-6 pt-10 text-center">
         <div className={`confirmado mx-auto mb-4 grid h-20 w-20 place-items-center rounded-full ${e.color}`}>
-          <Icono nombre={e.icono} className="h-10 w-10" />
+          {r.estado === 'aprobada' ? (
+            // Circulo y check que se dibujan solos
+            <svg viewBox="0 0 24 24" className="check-dibujado h-12 w-12" fill="none" stroke="currentColor" strokeWidth="1.8"
+                 strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+              <circle className="check-circulo" cx="12" cy="12" r="10" />
+              <path d="m7.5 12.5 3 3 6-6.5" />
+            </svg>
+          ) : (
+            <Icono nombre={e.icono} className="h-10 w-10" />
+          )}
         </div>
         <h2 className="text-2xl font-bold text-marca-700">{e.titulo}</h2>
         {r.monto && <div className="cifras mt-2 font-titulo text-4xl font-bold text-marca-900">{cop(r.monto)}</div>}

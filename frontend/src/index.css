@@ -35,18 +35,37 @@ h2 {
 }
 
 /* ------------------------------------------------------------------
-   Botones: se levantan al pasar el cursor y se hunden al hacer clic
+   Botones: se agrandan un poco al pasar el cursor y se hunden al hacer
+   clic. Aplica a TODOS los <button> y a los enlaces con .boton-vivo.
+   No aplica a los enlaces con rayita (.enlace-vivo) ni a .no-crecer
+   (filas anchas, como las preguntas frecuentes).
    ------------------------------------------------------------------ */
+button,
 .boton-vivo {
   transition: transform 0.18s ease, box-shadow 0.18s ease, background-color 0.18s ease, color 0.18s ease;
 }
+button:hover:not(:disabled):not(.enlace-vivo):not(.no-crecer),
 .boton-vivo:hover:not(:disabled) {
-  transform: translateY(-2px);
+  transform: scale(1.05);
+}
+button:active:not(:disabled):not(.enlace-vivo):not(.no-crecer),
+.boton-vivo:active:not(:disabled) {
+  transform: scale(0.97);
+}
+/* Los botones de color (principal, dorado) ademas proyectan una sombra suave */
+.boton-sombra:hover:not(:disabled) {
   box-shadow: 0 10px 22px -10px rgba(22, 74, 65, 0.55);
 }
-.boton-vivo:active:not(:disabled) {
-  transform: translateY(0) scale(0.97);
-  box-shadow: none;
+
+/* Contenedores que se pueden desplazar (menus, tablas): se desplazan igual con la
+   rueda del mouse, pero sin mostrar la barra gris ni sus flechas. Asi, cuando un
+   boton se agranda al pasar el mouse, no aparece una barra de desplazamiento. */
+.sin-barras {
+  scrollbar-width: none; /* Firefox */
+  -ms-overflow-style: none;
+}
+.sin-barras::-webkit-scrollbar {
+  display: none; /* Chrome, Edge */
 }
 
 /* Enlace con subrayado que se dibuja de izquierda a derecha */
@@ -169,11 +188,94 @@ h2 {
   to { opacity: 1; transform: none; }
 }
 
+/* ------------------------------------------------------------------
+   Panel del cliente
+   ------------------------------------------------------------------ */
+/* Siluetas de carga: un brillo que recorre el bloque gris */
+.silueta {
+  background: linear-gradient(90deg, #ebf1e9 25%, #f5f8f4 50%, #ebf1e9 75%);
+  background-size: 200% 100%;
+  animation: silueta 1.4s ease-in-out infinite;
+}
+@keyframes silueta {
+  from { background-position: 100% 0; }
+  to { background-position: -100% 0; }
+}
+
+/* Avisos flotantes: entran desde la derecha y la barrita se vacia en 4 s */
+.aviso-entra {
+  position: relative;
+  animation: aviso-entra 0.35s cubic-bezier(0.2, 0.9, 0.3, 1.2);
+}
+@keyframes aviso-entra {
+  from { opacity: 0; transform: translateX(40px) scale(0.95); }
+  to { opacity: 1; transform: none; }
+}
+.aviso-tiempo {
+  transform-origin: left;
+  animation: aviso-tiempo 4s linear forwards;
+}
+@keyframes aviso-tiempo {
+  from { transform: scaleX(1); }
+  to { transform: scaleX(0); }
+}
+
+/* Ventana de dialogo */
+.fondo-entra { animation: fondo-entra 0.2s ease; }
+.dialogo-entra { animation: dialogo-entra 0.3s cubic-bezier(0.2, 0.9, 0.3, 1.1); }
+@keyframes fondo-entra { from { opacity: 0; } to { opacity: 1; } }
+@keyframes dialogo-entra {
+  from { opacity: 0; transform: translateY(16px) scale(0.97); }
+  to { opacity: 1; transform: none; }
+}
+
+/* Cambio de pantalla: la nueva aparece subiendo un poco */
+.pantalla-entra { animation: pantalla-entra 0.35s cubic-bezier(0.2, 0.7, 0.2, 1); }
+@keyframes pantalla-entra {
+  from { opacity: 0; transform: translateY(10px); }
+  to { opacity: 1; transform: none; }
+}
+
+/* Check que se dibuja (transferencia exitosa) */
+.check-dibujado path {
+  stroke-dasharray: 24;
+  stroke-dashoffset: 24;
+  animation: check-dibujado 0.5s 0.25s ease-out forwards;
+}
+.check-circulo {
+  stroke-dasharray: 64;
+  stroke-dashoffset: 64;
+  animation: check-dibujado 0.45s ease-out forwards;
+}
+@keyframes check-dibujado { to { stroke-dashoffset: 0; } }
+
+/* Tarjeta de cuenta que se inclina siguiendo el mouse (ver Inicio.jsx).
+   --rx / --ry: grados de inclinacion; --bx / --by: donde esta el brillo. */
+.tarjeta-inclinable {
+  transform: perspective(900px) rotateX(var(--rx, 0deg)) rotateY(var(--ry, 0deg));
+  transition: transform 0.25s ease-out, box-shadow 0.25s ease;
+  will-change: transform;
+}
+.tarjeta-inclinable:hover { transition: transform 0.08s linear, box-shadow 0.25s ease; }
+.tarjeta-reflejo {
+  background: radial-gradient(circle at var(--bx, 50%) var(--by, 0%), rgba(255, 255, 255, 0.28), transparent 55%);
+  opacity: 0;
+  transition: opacity 0.3s ease;
+}
+.tarjeta-inclinable:hover .tarjeta-reflejo { opacity: 1; }
+
+/* Barra de progreso de una meta: se llena al aparecer */
+.barra-llena { animation: barra-llena 0.9s cubic-bezier(0.2, 0.7, 0.2, 1); transform-origin: left; }
+@keyframes barra-llena { from { transform: scaleX(0); } to { transform: scaleX(1); } }
+
 /* Quien pide menos movimiento en su sistema ve todo quieto */
 @media (prefers-reduced-motion: reduce) {
   html { scroll-behavior: auto; }
   .aparecer { opacity: 1; transform: none; transition: none; }
-  .tarjeta-3d, .tarjeta-brillo, .confirmado, .cinta { animation: none; }
-  .boton-vivo { transition: none; }
-  .boton-vivo:hover:not(:disabled), .boton-vivo:active:not(:disabled) { transform: none; }
+  .tarjeta-3d, .tarjeta-brillo, .confirmado, .cinta, .silueta, .aviso-entra, .fondo-entra, .dialogo-entra,
+  .pantalla-entra, .barra-llena { animation: none; }
+  .check-dibujado path, .check-circulo { animation: none; stroke-dashoffset: 0; }
+  .tarjeta-inclinable { transform: none !important; }
+  button, .boton-vivo { transition: none; }
+  button:hover, button:active, .boton-vivo:hover:not(:disabled), .boton-vivo:active:not(:disabled) { transform: none !important; }
 }

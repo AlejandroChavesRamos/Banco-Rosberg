@@ -145,6 +145,22 @@ class TransferenciaEntrada(BaseModel):
         return _texto_limpio(v, obligatorio=False)
 
 
+class CerrarCuentaEntrada(BaseModel):
+    password: str = Field(max_length=128, description="Contrasena actual, para confirmar")
+    destino: NumeroCuenta | None = Field(default=None,
+                                         description="Cuenta propia que recibe el saldo (obligatoria si hay saldo)")
+
+
+class MetaEntrada(BaseModel):
+    nombre: str = Field(min_length=2, max_length=60)
+    objetivo: Monto
+    cuenta: NumeroCuenta
+
+
+class MovimientoMeta(BaseModel):
+    monto: Monto
+
+
 class CodigoRetiroEntrada(BaseModel):
     cuenta: NumeroCuenta
     monto: Monto

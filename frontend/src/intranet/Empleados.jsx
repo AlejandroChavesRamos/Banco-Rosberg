@@ -75,7 +75,7 @@ export default function Empleados() {
         </div>
       )}
 
-      <Tarjeta className="overflow-x-auto p-0">
+      <Tarjeta className="sin-barras overflow-x-auto p-0">
         <table className="w-full text-sm">
           <thead className="border-b border-slate-100 text-left text-xs text-slate-500">
             <tr><th className="px-5 py-3">Nombre</th><th>Correo</th><th>Rol</th><th>Desde</th><th>Estado</th><th></th></tr>

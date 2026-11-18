@@ -1,26 +1,46 @@
 // =====================================================================
 // Inicio del cliente (pensado para computador):
+//   Arriba: saludo, saldo total (con el "ojo" para ocultarlo) y accesos rapidos.
 //   Columna izquierda: sus cuentas, resumen del mes y envio rapido.
-//   Columna derecha:  tabla de movimientos de la cuenta seleccionada.
+//   Columna derecha:  grafica de los ultimos meses y tabla de movimientos.
 // En una ventana angosta las columnas se apilan una debajo de otra.
 // =====================================================================
 import { useEffect, useState } from 'react'
-import { useNavigate } from 'react-router-dom'
+import { Link, useNavigate } from 'react-router-dom'
+import { Bar, BarChart, CartesianGrid, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts'
 import { api } from '../api'
+import { useAviso } from '../componentes/Avisos'
 import Icono from '../componentes/Icono'
-import { Aviso, Boton, Campo, Cargando, EstadoVacio, Insignia, Tarjeta } from '../componentes/ui'
+import { Dinero, useSaldoOculto } from '../componentes/Saldo'
+import { Aviso, Boton, Campo, Cargando, Dialogo, EstadoVacio, Insignia, Selector, Silueta, Tarjeta } from '../componentes/ui'
 import { ESTADOS, cop, enmascarar, fechaHora } from '../formato'
 import { useSesion } from '../sesion'
 
 const TIPOS = { deposito: 'Depósito', retiro: 'Retiro', transferencia: 'Transferencia' }
 
+const ACCESOS = [
+  { a: '/app/transferir', texto: 'Enviar dinero', icono: 'enviar' },
+  { a: '/app/retiro', texto: 'Retirar sin tarjeta', icono: 'codigo' },
+  { a: '/app/metas', texto: 'Metas de ahorro', icono: 'meta' },
+  { a: '/app/llaves', texto: 'Mis llaves', icono: 'llave' },
+]
+
+function saludo() {
+  const hora = new Date().getHours()
+  if (hora < 12) return 'Buenos días'
+  if (hora < 19) return 'Buenas tardes'
+  return 'Buenas noches'
+}
+
 export default function Inicio() {
   const { usuario } = useSesion()
-  const [cuentas, setCuentas] = useState([])
+  const { oculto, alternar } = useSaldoOculto()
+  const [cuentas, setCuentas] = useState(null) // null = todavia cargando
   const [seleccionada, setSeleccionada] = useState(null) // numero de la cuenta que se esta viendo
   const [detalle, setDetalle] = useState(null) // movimientos de esa cuenta
   const [error, setError] = useState('')
   const [abriendo, setAbriendo] = useState(false)
+  const [cerrando, setCerrando] = useState(null) // cuenta que se va a cerrar (abre el dialogo)
   const [filtro, setFiltro] = useState({ desde: '', hasta: '' }) // rango de fechas del extracto
 
   // useEffect: codigo que corre al abrir la pantalla (traer las cuentas)
@@ -42,11 +62,12 @@ export default function Inicio() {
 
   const conFiltro = Boolean(filtro.desde || filtro.hasta)
 
-  async function cargarCuentas() {
+  async function cargarCuentas(preferida) {
     try {
       const lista = await api.get('/cuentas')
       setCuentas(lista)
-      if (lista.length && !seleccionada) setSeleccionada(lista[0].numero)
+      const sigueExistiendo = lista.some((c) => c.numero === (preferida ?? seleccionada))
+      setSeleccionada(sigueExistiendo ? (preferida ?? seleccionada) : lista[0]?.numero ?? null)
     } catch (e) {
       setError(e.message)
     }
@@ -56,8 +77,7 @@ export default function Inicio() {
     setAbriendo(true)
     try {
       const r = await api.post('/cuentas', { tipo: 'ahorros' })
-      await cargarCuentas()
-      setSeleccionada(r.cuenta)
+      await cargarCuentas(r.cuenta)
     } catch (e) {
       setError(e.message)
     } finally {
@@ -66,89 +86,359 @@ export default function Inicio() {
   }
 
   const primerNombre = usuario.nombre.split(' ')[0]
-  const total = cuentas.reduce((suma, c) => suma + Number(c.saldo), 0)
+  const lista = cuentas ?? []
+  const total = lista.reduce((suma, c) => suma + Number(c.saldo), 0)
+  const activas = lista.filter((c) => c.estado === 'activa')
 
   return (
-    <div className="space-y-6">
-      <div className="flex flex-wrap items-end justify-between gap-4">
+    <div className="space-y-8">
+      {/* Saludo y saldo total */}
+      <div className="flex flex-wrap items-end justify-between gap-6">
         <div>
-          <p className="text-sm text-slate-500">Hola, {primerNombre}</p>
+          <p className="text-sm text-slate-500">{saludo()}, {primerNombre}</p>
           <h1 className="text-3xl font-bold tracking-tight text-marca-700">Resumen de tus cuentas</h1>
         </div>
-        {cuentas.length > 1 && (
-          <div className="text-right">
-            <div className="text-xs text-slate-500">Saldo total</div>
-            <div className="cifras text-2xl font-bold">{cop(total)}</div>
+        <div className="flex items-center gap-4 text-right">
+          <div>
+            <div className="text-xs text-slate-500">{lista.length > 1 ? 'Saldo total' : 'Tu saldo'}</div>
+            <div className="font-titulo text-3xl font-bold tracking-tight text-marca-800">
+              {cuentas ? <Dinero valor={total} /> : <Silueta className="ml-auto h-8 w-40" />}
+            </div>
           </div>
-        )}
+          <button
+            onClick={alternar}
+            aria-pressed={oculto}
+            className="grid h-11 w-11 place-items-center rounded-full bg-white text-marca-700 ring-1 ring-marca-200 hover:bg-marca-50"
+            title={oculto ? 'Mostrar saldos' : 'Ocultar saldos'}
+            aria-label={oculto ? 'Mostrar saldos' : 'Ocultar saldos'}
+          >
+            <Icono nombre={oculto ? 'ojoCerrado' : 'ojo'} />
+          </button>
+        </div>
       </div>
+
+      {/* Accesos rapidos */}
+      <nav className="grid grid-cols-2 gap-4 md:grid-cols-4" aria-label="Accesos rápidos">
+        {ACCESOS.map((a) => (
+          <Link
+            key={a.a}
+            to={a.a}
+            className="boton-vivo group flex items-center gap-4 rounded-3xl bg-white p-5 shadow-sm shadow-marca-900/5 ring-1 ring-marca-100 hover:ring-marca-300"
+          >
+            <span className="grid h-12 w-12 place-items-center rounded-2xl bg-marca-700 text-white transition-colors group-hover:bg-oro group-hover:text-marca-900">
+              <Icono nombre={a.icono} className="h-6 w-6" />
+            </span>
+            <span className="font-semibold text-marca-800">{a.texto}</span>
+          </Link>
+        ))}
+      </nav>
 
       <Aviso>{error}</Aviso>
 
       <div className="grid gap-6 lg:grid-cols-[360px_1fr]">
         {/* ----------------------------- Columna izquierda */}
         <div className="space-y-6">
-          {cuentas.map((c) => (
-            <TarjetaCuenta key={c.numero} c={c} activa={c.numero === seleccionada} onClick={() => setSeleccionada(c.numero)} />
+          {!cuentas && <Silueta className="h-44 rounded-3xl" />}
+          {lista.map((c) => (
+            <TarjetaCuenta
+              key={c.numero}
+              c={c}
+              activa={c.numero === seleccionada}
+              onClick={() => setSeleccionada(c.numero)}
+              puedeCerrar={activas.length > 1 && c.estado === 'activa'}
+              onCerrar={() => setCerrando(c)}
+            />
           ))}
-          {cuentas.length > 0 && cuentas.length < 3 && (
+          {lista.length > 0 && lista.length < 3 && (
             <Boton variante="secundario" className="w-full" cargando={abriendo} onClick={abrirCuenta}>
               <Icono nombre="mas" className="h-4 w-4" />
               Abrir otra cuenta de ahorros
             </Boton>
           )}
-          {detalle && <ResumenMes movimientos={detalle.movimientos} />}
-          {cuentas.length > 0 && <EnvioRapido cuentas={cuentas} origen={seleccionada} />}
+          {detalle ? <ResumenMes movimientos={detalle.movimientos} /> : <Silueta className="h-32 rounded-3xl" />}
+          {lista.length > 0 && <EnvioRapido cuentas={lista} origen={seleccionada} />}
         </div>
 
         {/* ------------------------------ Columna derecha */}
-        <Tarjeta className="p-0">
-          <div className="border-b border-marca-100 px-6 py-5">
-            <div className="flex flex-wrap items-center justify-between gap-3">
-              <div>
-                <h2 className="text-lg font-semibold text-marca-700">Movimientos</h2>
-                {detalle && (
-                  <p className="text-sm text-slate-500">
-                    Cuenta {enmascarar(detalle.cuenta)}, {conFiltro ? 'según las fechas elegidas' : 'últimos 50'}
-                  </p>
+        <div className="min-w-0 space-y-6">
+          {seleccionada && <GraficaMeses cuenta={seleccionada} />}
+
+          <Tarjeta className="p-0">
+            <div className="border-b border-marca-100 px-6 py-5">
+              <div className="flex flex-wrap items-center justify-between gap-3">
+                <div>
+                  <h2 className="text-lg font-semibold text-marca-700">Movimientos</h2>
+                  {detalle && (
+                    <p className="text-sm text-slate-500">
+                      Cuenta {enmascarar(detalle.cuenta)}, {conFiltro ? 'según las fechas elegidas' : 'últimos 50'}
+                    </p>
+                  )}
+                </div>
+                <Boton variante="secundario" disabled={!detalle?.movimientos.length} onClick={() => descargarExtracto(detalle)}>
+                  <Icono nombre="descargar" className="h-4 w-4" />
+                  Descargar extracto
+                </Boton>
+              </div>
+              {/* Filtro por fechas */}
+              <div className="mt-4 flex flex-wrap items-end gap-3">
+                <CampoFecha etiqueta="Desde" value={filtro.desde} max={filtro.hasta || undefined}
+                            onChange={(e) => setFiltro({ ...filtro, desde: e.target.value })} />
+                <CampoFecha etiqueta="Hasta" value={filtro.hasta} min={filtro.desde || undefined}
+                            onChange={(e) => setFiltro({ ...filtro, hasta: e.target.value })} />
+                {conFiltro && (
+                  <button onClick={() => setFiltro({ desde: '', hasta: '' })} className="enlace-vivo mb-2 text-sm font-medium text-marca-700">
+                    Quitar filtro
+                  </button>
                 )}
               </div>
-              <Boton variante="secundario" disabled={!detalle?.movimientos.length} onClick={() => descargarExtracto(detalle)}>
-                <Icono nombre="descargar" className="h-4 w-4" />
-                Descargar extracto
-              </Boton>
             </div>
-            {/* Filtro por fechas */}
-            <div className="mt-4 flex flex-wrap items-end gap-3">
-              <CampoFecha etiqueta="Desde" value={filtro.desde} max={filtro.hasta || undefined}
-                          onChange={(e) => setFiltro({ ...filtro, desde: e.target.value })} />
-              <CampoFecha etiqueta="Hasta" value={filtro.hasta} min={filtro.desde || undefined}
-                          onChange={(e) => setFiltro({ ...filtro, hasta: e.target.value })} />
-              {conFiltro && (
-                <button onClick={() => setFiltro({ desde: '', hasta: '' })} className="enlace-vivo mb-2 text-sm font-medium text-marca-700">
-                  Quitar filtro
-                </button>
-              )}
-            </div>
-          </div>
-          {!detalle ? (
-            <Cargando texto="Cargando movimientos" />
-          ) : detalle.movimientos.length === 0 ? (
-            conFiltro ? (
-              <EstadoVacio icono="calendario" titulo="Sin movimientos en esas fechas">
-                Prueba con un rango más amplio o quita el filtro.
-              </EstadoVacio>
+            {!detalle ? (
+              <Cargando texto="Cargando movimientos" />
+            ) : detalle.movimientos.length === 0 ? (
+              conFiltro ? (
+                <EstadoVacio icono="calendario" titulo="Sin movimientos en esas fechas">
+                  Prueba con un rango más amplio o quita el filtro.
+                </EstadoVacio>
+              ) : (
+                <EstadoVacio icono="enviar" titulo="Aún no tienes movimientos">
+                  Cuando recibas o envíes dinero, lo verás aquí. Para tu primer depósito, acércate a una oficina.
+                </EstadoVacio>
+              )
             ) : (
-              <EstadoVacio icono="enviar" titulo="Aún no tienes movimientos">
-                Cuando recibas o envíes dinero, lo verás aquí. Para tu primer depósito, acércate a una oficina.
-              </EstadoVacio>
-            )
-          ) : (
-            <TablaMovimientos movimientos={detalle.movimientos} />
+              <TablaMovimientos movimientos={detalle.movimientos} />
+            )}
+          </Tarjeta>
+        </div>
+      </div>
+
+      {cerrando && (
+        <DialogoCerrarCuenta
+          cuenta={cerrando}
+          otras={activas.filter((c) => c.numero !== cerrando.numero)}
+          onCerrar={() => setCerrando(null)}
+          onListo={() => {
+            setCerrando(null)
+            cargarCuentas()
+          }}
+        />
+      )}
+    </div>
+  )
+}
+
+// Tarjeta de una cuenta: se inclina siguiendo el mouse, con un reflejo de luz.
+// Desde aqui se copia el numero de cuenta y se puede cerrar la cuenta.
+function TarjetaCuenta({ c, activa, onClick, puedeCerrar, onCerrar }) {
+  const avisar = useAviso()
+  const apartado = Number(c.apartado || 0)
+
+  function inclinar(e) {
+    const caja = e.currentTarget.getBoundingClientRect()
+    const x = (e.clientX - caja.left) / caja.width // 0 a 1
+    const y = (e.clientY - caja.top) / caja.height
+    e.currentTarget.style.setProperty('--ry', `${(x - 0.5) * 10}deg`)
+    e.currentTarget.style.setProperty('--rx', `${(0.5 - y) * 10}deg`)
+    e.currentTarget.style.setProperty('--bx', `${x * 100}%`)
+    e.currentTarget.style.setProperty('--by', `${y * 100}%`)
+  }
+  function soltar(e) {
+    e.currentTarget.style.setProperty('--rx', '0deg')
+    e.currentTarget.style.setProperty('--ry', '0deg')
+  }
+
+  async function copiar(e) {
+    e.stopPropagation() // no seleccionar la tarjeta al copiar
+    if (await copiarTexto(c.numero)) {
+      avisar(`Número de cuenta ${enmascarar(c.numero)} copiado`)
+    } else {
+      avisar('No se pudo copiar. Tu número de cuenta es ' + c.numero, 'error')
+    }
+  }
+
+  return (
+    // Es un div (no un <button>) porque adentro tiene otros botones
+    <div
+      role="button"
+      tabIndex={0}
+      aria-pressed={activa}
+      onClick={onClick}
+      onKeyDown={(e) => (e.key === 'Enter' || e.key === ' ') && e.target === e.currentTarget && (e.preventDefault(), onClick())}
+      onMouseMove={inclinar}
+      onMouseLeave={soltar}
+      className={`tarjeta-inclinable relative cursor-pointer overflow-hidden rounded-3xl p-6 text-white shadow-lg ${
+        activa
+          ? 'bg-gradient-to-br from-marca-500 to-marca-800 shadow-marca-900/30 ring-4 ring-marca-200'
+          : 'bg-gradient-to-br from-slate-500 to-slate-700 opacity-80 hover:opacity-100'
+      }`}
+    >
+      <span className="tarjeta-reflejo pointer-events-none absolute inset-0" />
+      <div className="relative">
+        <div className="flex items-center justify-between gap-3 text-sm text-white/80">
+          <span>Cuenta de {c.tipo}</span>
+          <button onClick={copiar} className="flex items-center gap-1.5 rounded-full bg-white/10 px-2.5 py-1 hover:bg-white/20"
+                  title="Copiar número de cuenta" aria-label={`Copiar número de cuenta ${enmascarar(c.numero)}`}>
+            <span className="cifras">{enmascarar(c.numero)}</span>
+            <Icono nombre="copiar" className="h-3.5 w-3.5" />
+          </button>
+        </div>
+        <div className="mt-7 text-xs text-white/70">{apartado > 0 ? 'Saldo de la cuenta' : 'Saldo disponible'}</div>
+        <div className="font-titulo text-3xl font-bold tracking-tight"><Dinero valor={c.saldo} /></div>
+        {apartado > 0 && (
+          <div className="mt-2 text-xs text-white/80">
+            Disponible <Dinero valor={Math.max(0, Number(c.saldo) - apartado)} animado={false} /> · En metas{' '}
+            <Dinero valor={apartado} animado={false} />
+          </div>
+        )}
+        <div className="mt-4 flex items-center justify-between gap-3">
+          {c.estado !== 'activa' ? (
+            <span className="rounded-full bg-white/20 px-2 py-0.5 text-xs">Cuenta {c.estado}</span>
+          ) : <span />}
+          {puedeCerrar && (
+            <button onClick={(e) => { e.stopPropagation(); onCerrar() }} className="text-xs font-medium text-white/75 hover:text-white">
+              Cerrar cuenta
+            </button>
           )}
-        </Tarjeta>
+        </div>
       </div>
     </div>
+  )
+}
+
+// Copia un texto al portapapeles. Si el navegador no deja usar la forma moderna
+// (por ejemplo, fuera de HTTPS), usa la forma clasica con un campo oculto.
+async function copiarTexto(texto) {
+  try {
+    await navigator.clipboard.writeText(texto)
+    return true
+  } catch {
+    const campo = document.createElement('textarea')
+    campo.value = texto
+    campo.setAttribute('readonly', '')
+    campo.style.position = 'fixed'
+    campo.style.opacity = '0'
+    document.body.appendChild(campo)
+    campo.select()
+    let copiado = false
+    try {
+      copiado = document.execCommand('copy')
+    } catch {}
+    campo.remove()
+    return copiado
+  }
+}
+
+// Confirmar el cierre de una cuenta. Si tiene saldo, se elige a donde pasarlo.
+function DialogoCerrarCuenta({ cuenta, otras, onCerrar, onListo }) {
+  const avisar = useAviso()
+  const tieneSaldo = Number(cuenta.saldo) > 0
+  const [password, setPassword] = useState('')
+  const [destino, setDestino] = useState(otras[0]?.numero ?? '')
+  const [error, setError] = useState('')
+  const [enviando, setEnviando] = useState(false)
+
+  async function cerrar(e) {
+    e.preventDefault()
+    setError('')
+    setEnviando(true)
+    try {
+      const r = await api.post(`/cuentas/${cuenta.numero}/cerrar`, { password, destino: tieneSaldo ? destino : null })
+      avisar(Number(r.saldo_trasladado) > 0
+        ? `Cuenta ${enmascarar(cuenta.numero)} cerrada. Pasamos ${cop(r.saldo_trasladado)} a ${enmascarar(destino)}`
+        : `Cuenta ${enmascarar(cuenta.numero)} cerrada`)
+      onListo()
+    } catch (err) {
+      setError(err.message)
+    } finally {
+      setEnviando(false)
+    }
+  }
+
+  return (
+    <Dialogo titulo={`Cerrar la cuenta ${enmascarar(cuenta.numero)}`} onCerrar={onCerrar}>
+      <form onSubmit={cerrar} className="space-y-4">
+        <ul className="space-y-1.5 text-sm text-slate-600">
+          <li>· La cuenta deja de aparecer y no se puede volver a abrir.</li>
+          <li>· Sus llaves se desactivan y sus metas de ahorro se eliminan.</li>
+          <li>· Tus movimientos se conservan en el historial del banco.</li>
+        </ul>
+        {tieneSaldo && (
+          <Selector
+            etiqueta={`Pasar el saldo (${cop(cuenta.saldo)}) a`}
+            value={destino}
+            onChange={(e) => setDestino(e.target.value)}
+            opciones={otras.map((c) => ({ valor: c.numero, texto: `Ahorros ${enmascarar(c.numero)}` }))}
+          />
+        )}
+        <Campo etiqueta="Tu contraseña, para confirmar" type="password" required autoComplete="current-password" autoFocus
+               value={password} onChange={(e) => setPassword(e.target.value)} />
+        <Aviso>{error}</Aviso>
+        <div className="flex justify-end gap-3 pt-1">
+          <Boton type="button" variante="secundario" onClick={onCerrar}>Cancelar</Boton>
+          <Boton type="submit" variante="peligro" cargando={enviando}>Cerrar cuenta</Boton>
+        </div>
+      </form>
+    </Dialogo>
+  )
+}
+
+// Entradas contra salidas de los ultimos 6 meses (solo lo que si se aplico)
+function GraficaMeses({ cuenta }) {
+  const [datos, setDatos] = useState(null)
+  const { oculto } = useSaldoOculto()
+
+  useEffect(() => {
+    setDatos(null)
+    const hoy = new Date()
+    const meses = []
+    for (let i = 5; i >= 0; i--) {
+      const f = new Date(hoy.getFullYear(), hoy.getMonth() - i, 1)
+      meses.push({ clave: `${f.getFullYear()}-${f.getMonth()}`, mes: f.toLocaleString('es-CO', { month: 'short' }).replace('.', ''), entradas: 0, salidas: 0 })
+    }
+    const desde = new Date(hoy.getFullYear(), hoy.getMonth() - 5, 1).toISOString().slice(0, 10)
+    api.get(`/cuentas/${cuenta}/movimientos?desde=${desde}&limite=500`).then((r) => {
+      for (const m of r.movimientos) {
+        if (m.estado !== 'aprobada') continue
+        const f = new Date(m.fecha)
+        const fila = meses.find((x) => x.clave === `${f.getFullYear()}-${f.getMonth()}`)
+        if (fila) fila[m.sentido === 'entrada' ? 'entradas' : 'salidas'] += Number(m.monto)
+      }
+      setDatos(meses)
+    }).catch(() => setDatos([]))
+  }, [cuenta])
+
+  const vacia = datos && datos.every((m) => m.entradas === 0 && m.salidas === 0)
+
+  return (
+    <Tarjeta>
+      <div className="mb-4 flex flex-wrap items-baseline justify-between gap-2">
+        <h2 className="text-lg font-semibold text-marca-700">Tus últimos 6 meses</h2>
+        <div className="flex gap-4 text-xs text-slate-500">
+          <span className="flex items-center gap-1.5"><span className="h-2.5 w-2.5 rounded-sm bg-marca-500" />Entradas</span>
+          <span className="flex items-center gap-1.5"><span className="h-2.5 w-2.5 rounded-sm bg-oro" />Salidas</span>
+        </div>
+      </div>
+      {!datos ? (
+        <Silueta className="h-52 rounded-2xl" />
+      ) : vacia ? (
+        <p className="py-14 text-center text-sm text-slate-500">Cuando tengas movimientos, aquí verás cuánto entra y sale cada mes.</p>
+      ) : (
+        <ResponsiveContainer width="100%" height={210}>
+          <BarChart data={datos} barGap={4}>
+            <CartesianGrid vertical={false} stroke="#DAE4D7" />
+            <XAxis dataKey="mes" stroke="#627868" fontSize={12} tickLine={false} axisLine={false} />
+            <YAxis stroke="#627868" fontSize={11} tickLine={false} axisLine={false} width={oculto ? 10 : 60}
+                   tickFormatter={(v) => (oculto ? '' : v >= 1e6 ? `${(v / 1e6).toLocaleString('es-CO')} M` : `${Math.round(v / 1000)} mil`)} />
+            <Tooltip
+              cursor={{ fill: '#F4F9F1' }}
+              formatter={(v, nombre) => [oculto ? '$ ••••••' : cop(v), nombre === 'entradas' ? 'Entradas' : 'Salidas']}
+              contentStyle={{ borderRadius: 12, border: '1px solid #CDE4C4', fontSize: 12 }}
+            />
+            <Bar dataKey="entradas" fill="#4D774E" radius={[6, 6, 0, 0]} maxBarSize={28} />
+            <Bar dataKey="salidas" fill="#F1B24A" radius={[6, 6, 0, 0]} maxBarSize={28} />
+          </BarChart>
+        </ResponsiveContainer>
+      )}
+    </Tarjeta>
   )
 }
 
@@ -188,25 +478,6 @@ function descargarExtracto(detalle) {
   URL.revokeObjectURL(enlace.href)
 }
 
-function TarjetaCuenta({ c, activa, onClick }) {
-  return (
-    <button
-      onClick={onClick}
-      className={`w-full rounded-3xl p-6 text-left text-white shadow-lg transition ${
-        activa ? 'bg-gradient-to-br from-marca-500 to-marca-800 ring-4 ring-marca-200' : 'bg-gradient-to-br from-slate-500 to-slate-700 opacity-80 hover:opacity-100'
-      }`}
-    >
-      <div className="flex items-center justify-between text-sm text-white/80">
-        <span>Cuenta de {c.tipo}</span>
-        <span className="cifras">{enmascarar(c.numero)}</span>
-      </div>
-      <div className="mt-8 text-xs text-white/70">Saldo disponible</div>
-      <div className="cifras text-3xl font-bold tracking-tight">{cop(c.saldo)}</div>
-      {c.estado !== 'activa' && <div className="mt-3 inline-block rounded-full bg-white/20 px-2 py-0.5 text-xs">Cuenta {c.estado}</div>}
-    </button>
-  )
-}
-
 // Entradas y salidas del mes actual (solo movimientos que si se aplicaron)
 function ResumenMes({ movimientos }) {
   const ahora = new Date()
@@ -224,11 +495,11 @@ function ResumenMes({ movimientos }) {
       <h2 className="text-lg font-semibold text-marca-700">Este mes <span className="font-normal capitalize text-slate-500">({mes})</span></h2>
       <div className="flex justify-between text-sm">
         <span className="flex items-center gap-1.5 text-slate-500"><Icono nombre="entrada" className="h-4 w-4" /> Entradas</span>
-        <span className="cifras font-semibold text-marca-600">+{cop(entradas)}</span>
+        <span className="font-semibold text-marca-600">+<Dinero valor={entradas} animado={false} /></span>
       </div>
       <div className="flex justify-between text-sm">
         <span className="flex items-center gap-1.5 text-slate-500"><Icono nombre="salida" className="h-4 w-4" /> Salidas</span>
-        <span className="cifras font-semibold">−{cop(salidas)}</span>
+        <span className="font-semibold">−<Dinero valor={salidas} animado={false} /></span>
       </div>
       {enRevision > 0 && (
         <Aviso tipo="advertencia">Tienes {enRevision} operación(es) en revisión por seguridad.</Aviso>
@@ -263,7 +534,7 @@ function EnvioRapido({ origen }) {
 
 function TablaMovimientos({ movimientos }) {
   return (
-    <div className="overflow-x-auto">
+    <div className="sin-barras overflow-x-auto">
       <table className="w-full text-sm">
         <thead className="text-left text-xs uppercase tracking-wide text-slate-500">
           <tr>

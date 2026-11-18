@@ -2,7 +2,7 @@
 // Intranet Rosberg (empleados): rutas, menu lateral segun el rol y login.
 // =====================================================================
 import { useEffect, useState } from 'react'
-import { Navigate, NavLink, Outlet, Route, Routes, useLocation, useNavigate } from 'react-router-dom'
+import { Link, Navigate, NavLink, Outlet, Route, Routes, useLocation, useNavigate } from 'react-router-dom'
 import { api } from '../api'
 import CambiarClave from '../cliente/CambiarClave'
 import { ConfigurarDosPasos, PasoCodigo } from '../componentes/DosPasos'
@@ -121,18 +121,20 @@ function Marco() {
   return (
     <div className="flex min-h-screen">
       {/* Menu lateral, en el verde del banco */}
-      <aside className="no-imprimir sticky top-0 flex h-screen w-64 shrink-0 flex-col bg-marca-700 px-3 py-6 text-white">
-        <div className="px-3">
-          <Logo claro subtitulo="Intranet" />
+      <aside className="no-imprimir sticky top-0 flex h-screen w-64 shrink-0 flex-col bg-marca-700 px-1 py-6 text-white">
+        <div className="px-5">
+          <Link to="/intranet" aria-label="Intranet, inicio" className="inline-block">
+            <Logo claro subtitulo="Intranet" />
+          </Link>
         </div>
-        <nav className="mt-9 flex-1 space-y-1 overflow-y-auto">
+        <nav className="sin-barras mt-9 flex-1 space-y-1 overflow-y-auto px-2 py-1">
           {!bloqueado &&
             opciones.map((m) => (
               <NavLink
                 key={m.a}
                 to={m.a}
                 className={({ isActive }) =>
-                  `flex items-center gap-3 rounded-xl px-3 py-2.5 text-sm font-medium transition-colors ${
+                  `boton-vivo flex items-center gap-3 rounded-xl px-3 py-2.5 text-sm font-medium ${
                     isActive ? 'bg-white text-marca-700' : 'text-white/85 hover:bg-white/10 hover:text-white'
                   }`
                 }
@@ -147,7 +149,7 @@ function Marco() {
               </NavLink>
             ))}
         </nav>
-        <div className="border-t border-white/15 px-3 pt-5">
+        <div className="mx-2 border-t border-white/15 px-3 pt-5">
           <div className="truncate text-sm font-semibold">{usuario.nombre}</div>
           <div className="text-xs text-marca-300">{NOMBRE_ROL[usuario.rol]}</div>
           <div className="mt-4 flex flex-col items-start gap-2 text-sm">
@@ -162,7 +164,9 @@ function Marco() {
 
       {/* Contenido de la pantalla actual */}
       <main className="min-w-0 flex-1 p-6 lg:p-10">
-        <Outlet />
+        <div key={ubicacion.pathname} className="pantalla-entra">
+          <Outlet />
+        </div>
       </main>
     </div>
   )
@@ -211,7 +215,9 @@ function LoginIntranet() {
         <div className="mx-auto w-full max-w-sm">
           <Volver a="/app/login" className="mb-10">Volver a la banca en línea</Volver>
           <div>
-            <Logo grande subtitulo="Intranet" />
+            <Link to="/intranet/login" aria-label="Intranet, inicio" className="inline-block">
+              <Logo grande subtitulo="Intranet" />
+            </Link>
           </div>
           {token2fa ? (
             <div className="mt-12">

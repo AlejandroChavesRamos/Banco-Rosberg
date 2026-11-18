@@ -51,7 +51,7 @@ export default function Perfil() {
             Mostramos solo los últimos dígitos de tu cédula y tu celular. Para corregir un dato, acércate a una
             oficina del banco.
           </p>
-          <Link to="/app/cambiar-clave" className="boton-vivo inline-flex items-center gap-2 rounded-xl bg-marca-700 px-4 py-2.5 font-semibold text-white hover:bg-marca-800">
+          <Link to="/app/cambiar-clave" className="boton-vivo boton-sombra inline-flex items-center gap-2 rounded-xl bg-marca-700 px-4 py-2.5 font-semibold text-white hover:bg-marca-800">
             <Icono nombre="escudo" className="h-4 w-4" />
             Cambiar contraseña
           </Link>

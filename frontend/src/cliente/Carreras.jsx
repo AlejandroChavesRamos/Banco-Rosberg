@@ -1,6 +1,7 @@
 // Pagina "Trabaja con nosotros" (publica, no pide iniciar sesion).
 // Banco Rosberg es un proyecto academico: aqui no se prometen vacantes reales
 // ni se muestran cifras inventadas. Las cifras son datos reales del proyecto.
+import { Link } from 'react-router-dom'
 import IntroLogo from '../componentes/IntroLogo'
 import Aparecer from '../componentes/Aparecer'
 import { Logo, Volver } from '../componentes/ui'
@@ -25,7 +26,7 @@ const FOTOS = [
   [foto5, 'Equipo reunido alrededor de un portátil'],
 ]
 
-const botonOro = 'boton-vivo inline-block rounded-full bg-oro px-7 py-3.5 text-base font-semibold text-marca-900 hover:bg-oro-claro'
+const botonOro = 'boton-vivo boton-sombra inline-block rounded-full bg-oro px-7 py-3.5 text-base font-semibold text-marca-900 hover:bg-oro-claro'
 
 export default function Carreras() {
   return (
@@ -116,7 +117,7 @@ export default function Carreras() {
             </Aparecer>
           </div>
           <div className="mx-auto flex max-w-6xl flex-wrap items-center gap-x-8 gap-y-4 border-t border-white/15 px-6 py-8">
-            <Logo claro />
+            <Link to="/app/login" aria-label="Banco Rosberg, inicio"><Logo claro /></Link>
             <p className="text-xs text-white/60">
               © 2026 Banco Rosberg. Proyecto académico: no es una entidad financiera real ni maneja dinero real.
             </p>

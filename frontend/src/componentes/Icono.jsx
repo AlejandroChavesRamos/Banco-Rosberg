@@ -40,6 +40,10 @@ const TRAZOS = {
   estrella: <path d="m12 3.500 2.600 5.400 5.900.800-4.300 4.100 1 5.800L12 16.800l-5.200 2.800 1-5.800-4.300-4.100 5.900-.800L12 3.500z" />,
   cerrar: <path d="M6 6l12 12M18 6 6 18" />,
   robot: <><rect x="4.500" y="8" width="15" height="11" rx="3" /><path d="M12 4.500V8M9.500 13v.01M14.500 13v.01M9.500 16.200h5" /><circle cx="12" cy="3.800" r="1" /></>,
+  copiar: <><rect x="8.5" y="8.5" width="12" height="12" rx="2" /><path d="M15.5 8.5V5a1.5 1.5 0 0 0-1.5-1.5H5A1.5 1.5 0 0 0 3.5 5v9A1.5 1.5 0 0 0 5 15.5h3.5" /></>,
+  meta: <><circle cx="12" cy="12" r="8.5" /><circle cx="12" cy="12" r="4.5" /><circle cx="12" cy="12" r="1" /></>,
+  grafica: <><path d="M4 20V10M10 20V4M16 20v-7M21 20H3" /></>,
+  puntos: <><circle cx="5.5" cy="12" r="1.2" /><circle cx="12" cy="12" r="1.2" /><circle cx="18.5" cy="12" r="1.2" /></>,
 }
 
 export default function Icono({ nombre, className = 'h-5 w-5' }) {

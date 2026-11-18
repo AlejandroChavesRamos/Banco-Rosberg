@@ -8,8 +8,9 @@ from fastapi import APIRouter, Depends, Header, Query, Request
 from ..antifraude import motor
 from ..db.mysql import consultar, consultar_uno, ejecutar, leer_config, llamar_sp, obtener_conexion
 from ..errores import ErrorNegocio
-from ..esquemas import CodigoRetiroEntrada, NuevaCuenta, NuevaLlave, TransferenciaEntrada
-from ..seguridad import cifrado, doble_factor
+from ..esquemas import (CerrarCuentaEntrada, CodigoRetiroEntrada, MetaEntrada, MovimientoMeta, NuevaCuenta,
+                        NuevaLlave, TransferenciaEntrada)
+from ..seguridad import cifrado, contrasenas, doble_factor
 from ..seguridad.dependencias import UsuarioActual, requiere_rol
 from ..servicios import auditoria, banco, grafo
 from ..utilidades import enmascarar_nombre, enmascarar_numero, huella_dispositivo, ip_cliente
@@ -24,7 +25,8 @@ cualquier_rol = requiere_rol("cliente", "cajero", "analista", "admin")
 def mi_perfil(u: UsuarioActual = Depends(solo_cliente), conn=Depends(obtener_conexion)):
     fila = consultar_uno(conn, "SELECT documento_cifrado, telefono_cifrado, creado_en FROM usuarios WHERE id = %s",
                          (u.id,))
-    cuentas = consultar_uno(conn, "SELECT COUNT(*) AS n FROM cuentas WHERE usuario_id = %s", (u.id,))["n"]
+    cuentas = consultar_uno(conn, "SELECT COUNT(*) AS n FROM cuentas WHERE usuario_id = %s AND estado <> 'cerrada'",
+                            (u.id,))["n"]
 
     def _ultimos(cifrado_bytes, visibles: int) -> str | None:
         # Solo se muestran los ultimos digitos: la pantalla nunca recibe el dato completo
@@ -42,14 +44,21 @@ def mi_perfil(u: UsuarioActual = Depends(solo_cliente), conn=Depends(obtener_con
 # ================================================================== cuentas
 @router.get("/cuentas", summary="Mis cuentas")
 def mis_cuentas(u: UsuarioActual = Depends(solo_cliente), conn=Depends(obtener_conexion)):
-    return consultar(conn, "SELECT numero, tipo, saldo, estado, creada_en FROM cuentas "
-                           "WHERE usuario_id = %s ORDER BY id", (u.id,))
+    # Las cuentas cerradas no se muestran. "apartado" es lo guardado en metas de ahorro.
+    return consultar(
+        conn,
+        "SELECT c.numero, c.tipo, c.saldo, c.estado, c.creada_en, "
+        "COALESCE((SELECT SUM(m.apartado) FROM metas_ahorro m WHERE m.cuenta_id = c.id AND m.activa), 0) AS apartado "
+        "FROM cuentas c WHERE c.usuario_id = %s AND c.estado <> 'cerrada' ORDER BY c.id",
+        (u.id,),
+    )
 
 
 @router.post("/cuentas", status_code=201, summary="Abrir otra cuenta")
 def abrir_cuenta(datos: NuevaCuenta, request: Request,
                  u: UsuarioActual = Depends(solo_cliente), conn=Depends(obtener_conexion)):
-    total = consultar_uno(conn, "SELECT COUNT(*) AS n FROM cuentas WHERE usuario_id = %s", (u.id,))["n"]
+    total = consultar_uno(conn, "SELECT COUNT(*) AS n FROM cuentas WHERE usuario_id = %s AND estado <> 'cerrada'",
+                          (u.id,))["n"]
     if total >= leer_config(conn, "MAX_CUENTAS_CLIENTE"):
         raise ErrorNegocio(409, "Alcanzo el maximo de cuentas permitidas")
     numero = banco.generar_numero_cuenta(conn)
@@ -171,6 +180,7 @@ def transferir(
 ):
     origen = banco.cuenta_propia(conn, datos.cuenta_origen, u.id)
     banco.exigir_activa(origen)
+    banco.exigir_disponible(conn, origen, datos.monto)
     destino = banco.resolver_destino(conn, datos.destino)
     if destino["id"] == origen["id"]:
         raise ErrorNegocio(400, "No puede transferir a la misma cuenta")
@@ -244,6 +254,7 @@ def generar_codigo_retiro(datos: CodigoRetiroEntrada, request: Request,
         raise ErrorNegocio(400, "El monto supera el maximo permitido por codigo de retiro")
     if cuenta["saldo"] < datos.monto:
         raise ErrorNegocio(400, "Saldo insuficiente")
+    banco.exigir_disponible(conn, cuenta, datos.monto)
 
     ip = ip_cliente(request)
     huella, agente = huella_dispositivo(request)
@@ -295,3 +306,137 @@ def mis_codigos(u: UsuarioActual = Depends(solo_cliente), conn=Depends(obtener_c
         "WHERE c.usuario_id = %s ORDER BY r.id DESC LIMIT 20",
         (u.id,),
     )
+
+
+# ============================================================ cerrar cuenta
+@router.post("/cuentas/{numero}/cerrar", summary="Cerrar una de mis cuentas")
+def cerrar_cuenta(numero: str, datos: CerrarCuentaEntrada, request: Request,
+                  u: UsuarioActual = Depends(solo_cliente), conn=Depends(obtener_conexion)):
+    """En un banco las cuentas no se borran: se CIERRAN. Sus movimientos y la
+    auditoria se conservan; la cuenta deja de mostrarse y no puede volver a usarse.
+
+    Si tiene saldo, primero se traslada a otra cuenta propia (queda como una
+    transferencia normal en el historial).
+    """
+    ip = ip_cliente(request)
+    fila = consultar_uno(conn, "SELECT password_hash FROM usuarios WHERE id = %s", (u.id,))
+    if not contrasenas.verificar(fila["password_hash"], datos.password):
+        raise ErrorNegocio(400, "La contrasena no es correcta")
+
+    cuenta = banco.cuenta_propia(conn, numero, u.id)
+    if cuenta["estado"] != "activa":
+        raise ErrorNegocio(409, f"La cuenta esta {cuenta['estado']}: comuniquese con el banco")
+    otras = consultar_uno(conn, "SELECT COUNT(*) AS n FROM cuentas WHERE usuario_id = %s AND estado = 'activa' "
+                                "AND id <> %s", (u.id, cuenta["id"]))["n"]
+    if otras == 0:
+        raise ErrorNegocio(409, "No puedes cerrar tu unica cuenta activa")
+    if consultar_uno(conn, "SELECT 1 FROM transacciones WHERE (cuenta_origen_id = %s OR cuenta_destino_id = %s) "
+                           "AND estado = 'retenida' LIMIT 1", (cuenta["id"], cuenta["id"])):
+        raise ErrorNegocio(409, "La cuenta tiene operaciones en revision. Espera a que se resuelvan.")
+
+    trasladado = 0
+    if cuenta["saldo"] > 0:
+        if not datos.destino:
+            raise ErrorNegocio(400, "Elige a cual de tus cuentas pasamos el saldo")
+        destino = banco.cuenta_propia(conn, datos.destino, u.id)
+        banco.exigir_activa(destino)
+        if destino["id"] == cuenta["id"]:
+            raise ErrorNegocio(400, "Elige una cuenta diferente a la que vas a cerrar")
+        huella, agente = huella_dispositivo(request)
+        dispositivo_id, _ = banco.registrar_dispositivo(conn, u.id, huella, agente)
+        # Traslado entre cuentas del mismo cliente: no pasa por el motor antifraude
+        tx_id = llamar_sp(conn, "sp_transferir", [
+            cuenta["id"], destino["id"], cuenta["saldo"], "aprobada", 0, ip, dispositivo_id,
+            f"{u.id}:cierre:{cuenta['id']}", "Cierre de cuenta: traslado del saldo",
+        ])
+        tx = consultar_uno(conn, "SELECT creada_en FROM transacciones WHERE id = %s", (tx_id,))
+        grafo.sincronizar_transferencia(tx_id, cuenta["id"], destino["id"], cuenta["saldo"], tx["creada_en"], "aprobada")
+        trasladado = cuenta["saldo"]
+
+    # Lo que dependia de la cuenta deja de funcionar
+    ejecutar(conn, "UPDATE metas_ahorro SET activa = FALSE, apartado = 0 WHERE cuenta_id = %s AND activa",
+             (cuenta["id"],))
+    ejecutar(conn, "UPDATE llaves SET activa = FALSE WHERE cuenta_id = %s AND activa", (cuenta["id"],))
+    banco.cambiar_estado_cuenta(conn, cuenta, "cerrada")  # tambien cancela los codigos de retiro
+    auditoria.registrar(conn, "CIERRE_CUENTA", "cuentas", cuenta["id"], usuario_id=u.id,
+                        detalle={"canal": "en_linea", "saldo_trasladado": trasladado,
+                                 "destino": datos.destino if trasladado else None}, ip=ip)
+    return {"cuenta": numero, "estado": "cerrada", "saldo_trasladado": trasladado}
+
+
+# =========================================================== metas de ahorro
+def _meta_propia(conn, meta_id: int, usuario_id: int) -> dict:
+    meta = consultar_uno(
+        conn,
+        "SELECT m.id, m.nombre, m.objetivo, m.apartado, m.cuenta_id, c.numero, c.saldo, c.estado "
+        "FROM metas_ahorro m JOIN cuentas c ON c.id = m.cuenta_id "
+        "WHERE m.id = %s AND m.usuario_id = %s AND m.activa",
+        (meta_id, usuario_id),
+    )
+    if not meta:
+        raise ErrorNegocio(404, "Meta no encontrada")
+    return meta
+
+
+@router.get("/metas", summary="Mis metas de ahorro")
+def mis_metas(u: UsuarioActual = Depends(solo_cliente), conn=Depends(obtener_conexion)):
+    return consultar(
+        conn,
+        "SELECT m.id, m.nombre, m.objetivo, m.apartado, m.creada_en, c.numero AS cuenta "
+        "FROM metas_ahorro m JOIN cuentas c ON c.id = m.cuenta_id "
+        "WHERE m.usuario_id = %s AND m.activa ORDER BY m.id",
+        (u.id,),
+    )
+
+
+@router.post("/metas", status_code=201, summary="Crear una meta de ahorro")
+def crear_meta(datos: MetaEntrada, request: Request, u: UsuarioActual = Depends(solo_cliente),
+               conn=Depends(obtener_conexion)):
+    cuenta = banco.cuenta_propia(conn, datos.cuenta, u.id)
+    banco.exigir_activa(cuenta)
+    activas = consultar_uno(conn, "SELECT COUNT(*) AS n FROM metas_ahorro WHERE usuario_id = %s AND activa",
+                            (u.id,))["n"]
+    if activas >= 10:
+        raise ErrorNegocio(409, "Puedes tener hasta 10 metas activas")
+    cur = ejecutar(conn, "INSERT INTO metas_ahorro (usuario_id, cuenta_id, nombre, objetivo) VALUES (%s, %s, %s, %s)",
+                   (u.id, cuenta["id"], datos.nombre.strip(), datos.objetivo))
+    auditoria.registrar(conn, "CREAR_META", "metas_ahorro", cur.lastrowid, usuario_id=u.id,
+                        detalle={"objetivo": datos.objetivo}, ip=ip_cliente(request))
+    return {"id": cur.lastrowid}
+
+
+@router.post("/metas/{meta_id}/apartar", summary="Apartar dinero de la cuenta en una meta")
+def apartar_en_meta(meta_id: int, datos: MovimientoMeta, request: Request,
+                    u: UsuarioActual = Depends(solo_cliente), conn=Depends(obtener_conexion)):
+    meta = _meta_propia(conn, meta_id, u.id)
+    if meta["estado"] != "activa":
+        raise ErrorNegocio(409, f"La cuenta esta {meta['estado']}")
+    disponible = meta["saldo"] - banco.apartado_en_metas(conn, meta["cuenta_id"])
+    if datos.monto > disponible:
+        raise ErrorNegocio(400, f"Solo tienes ${max(disponible, 0):,.0f} disponible en esa cuenta".replace(",", "."))
+    ejecutar(conn, "UPDATE metas_ahorro SET apartado = apartado + %s WHERE id = %s", (datos.monto, meta_id))
+    auditoria.registrar(conn, "APARTAR_META", "metas_ahorro", meta_id, usuario_id=u.id,
+                        detalle={"monto": datos.monto}, ip=ip_cliente(request))
+    return {"id": meta_id, "apartado": meta["apartado"] + datos.monto}
+
+
+@router.post("/metas/{meta_id}/liberar", summary="Devolver dinero de una meta al disponible de la cuenta")
+def liberar_de_meta(meta_id: int, datos: MovimientoMeta, request: Request,
+                    u: UsuarioActual = Depends(solo_cliente), conn=Depends(obtener_conexion)):
+    meta = _meta_propia(conn, meta_id, u.id)
+    if datos.monto > meta["apartado"]:
+        raise ErrorNegocio(400, "No puedes liberar mas de lo que tienes apartado en la meta")
+    ejecutar(conn, "UPDATE metas_ahorro SET apartado = apartado - %s WHERE id = %s", (datos.monto, meta_id))
+    auditoria.registrar(conn, "LIBERAR_META", "metas_ahorro", meta_id, usuario_id=u.id,
+                        detalle={"monto": datos.monto}, ip=ip_cliente(request))
+    return {"id": meta_id, "apartado": meta["apartado"] - datos.monto}
+
+
+@router.delete("/metas/{meta_id}", summary="Eliminar una meta (lo apartado vuelve al disponible)")
+def eliminar_meta(meta_id: int, request: Request, u: UsuarioActual = Depends(solo_cliente),
+                  conn=Depends(obtener_conexion)):
+    meta = _meta_propia(conn, meta_id, u.id)
+    ejecutar(conn, "UPDATE metas_ahorro SET activa = FALSE, apartado = 0 WHERE id = %s", (meta_id,))
+    auditoria.registrar(conn, "ELIMINAR_META", "metas_ahorro", meta_id, usuario_id=u.id,
+                        detalle={"liberado": meta["apartado"]}, ip=ip_cliente(request))
+    return {"id": meta_id, "liberado": meta["apartado"]}
