@@ -66,7 +66,7 @@ export default function Atencion() {
               seleccionada={elegido}
               onElegir={(t) => setElegido(t.id)}
               titulo={(t) => `${t.cliente.nombre} · ${t.asunto}`}
-              subtitulo={(t) => `${TEMAS[t.tema]} · ${t.asesor ? t.asesor.nombre.split(' ')[0] : 'sin asesor'} · ${fechaHora(t.actualizado_en)}`}
+              subtitulo={(t) => `${TEMAS[t.tema]} · ${t.asistente_activo ? '🤖 Asistente' : t.asesor ? t.asesor.nombre.split(' ')[0] : 'sin asesor'} · ${fechaHora(t.actualizado_en)}`}
               vacio={
                 <EstadoVacio icono="chat" titulo={vista === 'nuevos' ? 'No hay clientes esperando' : 'Nada por aquí'}>
                   {vista === 'nuevos' ? 'Cuando un cliente pida ayuda, aparecerá en esta lista.' : 'No hay tiquetes en esta pestaña.'}
@@ -126,7 +126,9 @@ function Tiquete({ id, onCambio }) {
 
   let motivo = ''
   if (t.estado === 'cerrado') motivo = `Tiquete cerrado el ${fechaHora(t.cerrado_en)}.`
-  else if (t.estado === 'nuevo') motivo = 'Pulsa “Atender” para tomar este tiquete y responder.'
+  else if (t.estado === 'nuevo') motivo = t.asistente_activo
+    ? 'El asistente está respondiendo. Pulsa “Atender” para tomar el caso: el asistente se apagará.'
+    : 'Pulsa “Atender” para tomar este tiquete y responder.'
   else if (!t.a_mi_cargo) motivo = `Este tiquete lo atiende ${t.asesor.nombre}. Solo puedes leerlo.`
 
   return (
@@ -147,6 +149,11 @@ function Tiquete({ id, onCambio }) {
           <span className="text-slate-500">{TEMAS[t.tema]}</span>
           {t.asesor && <span className="text-slate-500">Asesor: {t.asesor.nombre} ({ROL[t.asesor.rol]})</span>}
           {t.calificacion && <Estrellas valor={t.calificacion} tamano="h-4 w-4" />}
+          {t.asistente_activo && (
+            <span className="flex items-center gap-1 rounded-full bg-oro-claro/50 px-2.5 py-0.5 text-xs font-medium text-marca-900">
+              <Icono nombre="robot" className="h-3.5 w-3.5" /> Respondiendo el asistente
+            </span>
+          )}
         </div>
         <div className="flex flex-wrap items-center gap-2">
           {t.estado === 'nuevo' && (
@@ -159,6 +166,12 @@ function Tiquete({ id, onCambio }) {
             <Boton variante="secundario" onClick={() => accion('cerrar')} cargando={ocupado}>
               <Icono nombre="check" className="h-4 w-4" />
               Cerrar tiquete
+            </Boton>
+          )}
+          {usuario.rol === 'admin' && t.estado !== 'cerrado' && (
+            <Boton variante="secundario" onClick={() => accion('asistente', { activo: !t.asistente_activo })} cargando={ocupado}>
+              <Icono nombre="robot" className="h-4 w-4" />
+              {t.asistente_activo ? 'Apagar asistente' : 'Activar asistente'}
             </Boton>
           )}
           {usuario.rol === 'admin' && t.estado !== 'cerrado' && (

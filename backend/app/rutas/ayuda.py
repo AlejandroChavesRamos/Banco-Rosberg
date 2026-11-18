@@ -18,14 +18,22 @@ Seguridad:
   - Los mensajes solo se insertan: la app no tiene permiso para editarlos
     ni borrarlos (ver 08_mensajeria.sh).
   - Limite de mensajes por minuto y de tiquetes abiertos, contra el abuso.
+
+Asistente Rosberg (servicios/asistente.py): un contestador por palabras
+clave que el admin enciende en un tiquete, o que se enciende solo si nadie
+atiende un tiquete nuevo a tiempo. Sus mensajes no tienen autor
+(automatico = TRUE). Se apaga en cuanto un empleado toma el tiquete o escribe.
 """
+import json
+
 from fastapi import APIRouter, Depends, Query, Request
 
 from ..db.mysql import consultar, consultar_uno, ejecutar, obtener_conexion, transaccion
 from ..errores import ErrorNegocio
-from ..esquemas import Calificacion, CierreTiquete, MensajeEntrada, NuevoTiquete, Reasignacion
+from ..esquemas import (AsistenteEstado, Calificacion, CambioRespuestaAutomatica, CierreTiquete, Ensenanza,
+                        MensajeEntrada, NuevaRespuestaAutomatica, NuevoSinonimo, NuevoTiquete, Reasignacion)
 from ..seguridad.dependencias import UsuarioActual, requiere_rol
-from ..servicios import auditoria
+from ..servicios import asistente, auditoria
 from ..utilidades import ip_cliente
 
 router_cliente = APIRouter(prefix="/ayuda", tags=["8. Ayuda (cliente)"])
@@ -42,11 +50,12 @@ MAX_MENSAJES_POR_MINUTO = 20
 # para contar los mensajes que escribio la OTRA persona y que aun no vio.
 _RESUMEN = """
     SELECT t.id, t.tema, t.asunto, t.estado, t.calificacion, t.creado_en, t.actualizado_en, t.cerrado_en,
+           t.asistente_activo,
            t.cliente_id, c.nombre AS cliente_nombre, c.email AS cliente_email,
            t.asesor_id, a.nombre AS asesor_nombre, a.rol AS asesor_rol,
            (SELECT m.texto FROM mensajes_tiquete m WHERE m.tiquete_id = t.id ORDER BY m.id DESC LIMIT 1) AS ultimo_mensaje,
            (SELECT COUNT(*) FROM mensajes_tiquete m
-             WHERE m.tiquete_id = t.id AND m.autor_id <> %s
+             WHERE m.tiquete_id = t.id AND (m.autor_id IS NULL OR m.autor_id <> %s)
                AND m.id > IF(t.cliente_id = %s, t.visto_cliente_id, t.visto_asesor_id)) AS no_leidos
     FROM tiquetes t
     JOIN usuarios c ON c.id = t.cliente_id
@@ -64,7 +73,7 @@ def _para_cliente(t: dict) -> dict:
         "id": t["id"], "tema": t["tema"], "asunto": t["asunto"], "estado": t["estado"],
         "calificacion": t["calificacion"], "creado_en": t["creado_en"],
         "actualizado_en": t["actualizado_en"], "cerrado_en": t["cerrado_en"],
-        "asesor": _primer_nombre(t["asesor_nombre"]),
+        "asesor": _primer_nombre(t["asesor_nombre"]), "asistente_activo": bool(t["asistente_activo"]),
         "ultimo_mensaje": t["ultimo_mensaje"], "no_leidos": int(t["no_leidos"]),
     }
 
@@ -78,6 +87,7 @@ def _para_empleado(t: dict, yo: int) -> dict:
         "cliente": {"id": t["cliente_id"], "nombre": t["cliente_nombre"], "email": t["cliente_email"]},
         "asesor": {"id": t["asesor_id"], "nombre": t["asesor_nombre"], "rol": t["asesor_rol"]}
         if t["asesor_id"] else None,
+        "asistente_activo": bool(t["asistente_activo"]),
         "ultimo_mensaje": t["ultimo_mensaje"], "no_leidos": int(t["no_leidos"]),
     }
 
@@ -89,16 +99,23 @@ def _tiquete(conn, tiquete_id: int, usuario_id: int) -> dict | None:
 def _mensajes(conn, tiquete: dict, despues_de: int, quien_mira: int) -> list[dict]:
     filas = consultar(
         conn,
-        "SELECT m.id, m.autor_id, m.texto, m.creado_en, u.nombre, u.rol "
-        "FROM mensajes_tiquete m JOIN usuarios u ON u.id = m.autor_id "
+        "SELECT m.id, m.autor_id, m.automatico, m.texto, m.opciones, m.creado_en, u.nombre, u.rol "
+        "FROM mensajes_tiquete m LEFT JOIN usuarios u ON u.id = m.autor_id "
         "WHERE m.tiquete_id = %s AND m.id > %s ORDER BY m.id LIMIT 500",
         (tiquete["id"], despues_de),
     )
+    def de(f):
+        if f["automatico"]:
+            return "asistente"
+        return "cliente" if f["autor_id"] == tiquete["cliente_id"] else "asesor"
+
     return [{
-        "id": f["id"], "texto": f["texto"], "creado_en": f["creado_en"],
-        "de": "cliente" if f["autor_id"] == tiquete["cliente_id"] else "asesor",
-        "mio": f["autor_id"] == quien_mira,
-        "autor": _primer_nombre(f["nombre"]) if f["autor_id"] != tiquete["cliente_id"] else f["nombre"],
+        "id": f["id"], "texto": f["texto"], "creado_en": f["creado_en"], "de": de(f),
+        "mio": f["autor_id"] is not None and f["autor_id"] == quien_mira,
+        # Botones de respuesta rapida que propone el asistente
+        "opciones": json.loads(f["opciones"]) if isinstance(f["opciones"], str) else f["opciones"],
+        "autor": asistente.NOMBRE if f["automatico"]
+        else f["nombre"] if f["autor_id"] == tiquete["cliente_id"] else _primer_nombre(f["nombre"]),
     } for f in filas]
 
 
@@ -141,7 +158,7 @@ def resumen_cliente(u: UsuarioActual = Depends(solo_cliente), conn=Depends(obten
     fila = consultar_uno(
         conn,
         "SELECT COUNT(*) AS n FROM mensajes_tiquete m JOIN tiquetes t ON t.id = m.tiquete_id "
-        "WHERE t.cliente_id = %s AND m.autor_id <> %s AND m.id > t.visto_cliente_id",
+        "WHERE t.cliente_id = %s AND (m.autor_id IS NULL OR m.autor_id <> %s) AND m.id > t.visto_cliente_id",
         (u.id, u.id),
     )
     return {"no_leidos": int(fila["n"])}
@@ -149,6 +166,7 @@ def resumen_cliente(u: UsuarioActual = Depends(solo_cliente), conn=Depends(obten
 
 @router_cliente.get("/tiquetes", summary="Mis conversaciones con el banco")
 def mis_tiquetes(u: UsuarioActual = Depends(solo_cliente), conn=Depends(obtener_conexion)):
+    asistente.revisar_autoactivacion(conn, u.id)
     filas = consultar(conn, _RESUMEN + " WHERE t.cliente_id = %s ORDER BY t.estado = 'cerrado', t.actualizado_en DESC "
                                        "LIMIT 100", (u.id, u.id, u.id))
     return [_para_cliente(t) for t in filas]
@@ -185,6 +203,7 @@ def _tiquete_propio(conn, tiquete_id: int, u: UsuarioActual) -> dict:
 @router_cliente.get("/tiquetes/{tiquete_id}", summary="Una conversacion y sus mensajes")
 def ver_tiquete_cliente(tiquete_id: int, despues_de: int = Query(default=0, ge=0),
                         u: UsuarioActual = Depends(solo_cliente), conn=Depends(obtener_conexion)):
+    asistente.revisar_autoactivacion(conn, u.id)
     t = _tiquete_propio(conn, tiquete_id, u)
     mensajes = _mensajes(conn, t, despues_de, u.id)
     _marcar_visto(conn, t, mensajes, "visto_cliente_id")
@@ -200,6 +219,9 @@ def escribir_cliente(tiquete_id: int, datos: MensajeEntrada,
     _limite_mensajes(conn, u.id)
     mensaje_id = _escribir(conn, t["id"], u.id, datos.texto)
     ejecutar(conn, "UPDATE tiquetes SET visto_cliente_id = %s WHERE id = %s", (mensaje_id, t["id"]))
+    if t["asistente_activo"]:
+        if asistente.responder(conn, t["id"], datos.texto) == "derivado":
+            auditoria.registrar(conn, "ASISTENTE_DERIVO", "tiquetes", t["id"], usuario_id=u.id)
     return {"id": mensaje_id}
 
 
@@ -233,7 +255,8 @@ def resumen_empleado(u: UsuarioActual = Depends(empleado), conn=Depends(obtener_
     sin_leer = consultar_uno(
         conn,
         "SELECT COUNT(*) AS n FROM mensajes_tiquete m JOIN tiquetes t ON t.id = m.tiquete_id "
-        "WHERE t.asesor_id = %s AND t.estado = 'en_atencion' AND m.autor_id <> %s AND m.id > t.visto_asesor_id",
+        "WHERE t.asesor_id = %s AND t.estado = 'en_atencion' AND (m.autor_id IS NULL OR m.autor_id <> %s) "
+        "AND m.id > t.visto_asesor_id",
         (u.id, u.id),
     )["n"]
     return {"nuevos": int(nuevos), "mios_no_leidos": int(sin_leer)}
@@ -279,7 +302,8 @@ def atender(tiquete_id: int, request: Request,
     # Atomico: si dos empleados pulsan "Atender" a la vez, el UPDATE solo
     # cambia la fila para el primero (la condicion estado = 'nuevo' ya no se
     # cumple para el segundo).
-    cur = ejecutar(conn, "UPDATE tiquetes SET estado = 'en_atencion', asesor_id = %s "
+    # Al tomarlo una persona, el asistente deja de responder
+    cur = ejecutar(conn, "UPDATE tiquetes SET estado = 'en_atencion', asesor_id = %s, asistente_activo = FALSE "
                          "WHERE id = %s AND estado = 'nuevo'", (u.id, t["id"]))
     if cur.rowcount == 0:
         actual = _tiquete(conn, t["id"], u.id)
@@ -303,6 +327,8 @@ def escribir_empleado(tiquete_id: int, datos: MensajeEntrada,
     _limite_mensajes(conn, u.id)
     mensaje_id = _escribir(conn, t["id"], u.id, datos.texto)
     ejecutar(conn, "UPDATE tiquetes SET visto_asesor_id = %s WHERE id = %s", (mensaje_id, t["id"]))
+    if t["asistente_activo"]:
+        asistente.apagar_por_humano(conn, t["id"])
     return {"id": mensaje_id}
 
 
@@ -332,8 +358,205 @@ def reasignar(tiquete_id: int, datos: Reasignacion, request: Request,
     if not nuevo:
         raise ErrorNegocio(404, "Empleado no encontrado o inactivo")
     # visto_asesor_id se reinicia: el nuevo asesor vera todo como "por leer"
-    ejecutar(conn, "UPDATE tiquetes SET estado = 'en_atencion', asesor_id = %s, visto_asesor_id = 0 WHERE id = %s",
+    ejecutar(conn, "UPDATE tiquetes SET estado = 'en_atencion', asesor_id = %s, visto_asesor_id = 0, "
+                   "asistente_activo = FALSE WHERE id = %s",
              (nuevo["id"], t["id"]))
     auditoria.registrar(conn, "TIQUETE_REASIGNADO", "tiquetes", t["id"], usuario_id=u.id,
                         detalle={"de": t["asesor_id"], "a": nuevo["id"]}, ip=ip_cliente(request))
     return _para_empleado(_tiquete(conn, t["id"], u.id), u.id)
+
+
+# =================================================================== ASISTENTE
+@router_empleado.post("/tiquetes/{tiquete_id}/asistente", summary="Encender o apagar el asistente en un tiquete (admin)")
+def cambiar_asistente(tiquete_id: int, datos: AsistenteEstado, request: Request,
+                      u: UsuarioActual = Depends(solo_admin), conn=Depends(obtener_conexion)):
+    t = _tiquete_existente(conn, tiquete_id, u)
+    if t["estado"] == "cerrado":
+        raise ErrorNegocio(409, "El tiquete esta cerrado")
+    if datos.activo:
+        if not asistente.activar(conn, t["id"]):
+            raise ErrorNegocio(409, "El asistente ya esta activo en este tiquete")
+    else:
+        asistente.apagar_por_humano(conn, t["id"])
+    auditoria.registrar(conn, "ASISTENTE_ACTIVADO" if datos.activo else "ASISTENTE_DESACTIVADO", "tiquetes", t["id"],
+                        usuario_id=u.id, ip=ip_cliente(request))
+    return _para_empleado(_tiquete(conn, t["id"], u.id), u.id)
+
+
+def _respuestas_con_palabras(conn, donde: str = "", params: tuple = ()) -> list[dict]:
+    filas = consultar(conn, "SELECT id, clave, titulo, pregunta, respuesta, accion, prioridad, activa, usos, util_si, "
+                            f"util_no, actualizada_en FROM respuestas_automaticas {donde} "
+                            "ORDER BY activa DESC, usos DESC, titulo", params)
+    palabras = consultar(conn, "SELECT respuesta_id, palabra FROM palabras_respuesta ORDER BY palabra")
+    relacionadas = consultar(conn, "SELECT respuesta_id, relacionada_id FROM respuestas_relacionadas")
+    for f in filas:
+        f["activa"] = bool(f["activa"])
+        f["palabras"] = [p["palabra"] for p in palabras if p["respuesta_id"] == f["id"]]
+        f["relacionadas"] = [r["relacionada_id"] for r in relacionadas if r["respuesta_id"] == f["id"]]
+    return filas
+
+
+def _guardar_palabras(conn, respuesta_id: int, palabras: list[str], reemplazar: bool = True) -> list[str]:
+    # Se guardan ya normalizadas, igual que se compara el texto del cliente
+    limpias = sorted({asistente.normalizar(p)[:40] for p in palabras} - {""})
+    if not limpias:
+        raise ErrorNegocio(400, "Escribe al menos una palabra clave")
+    if reemplazar:
+        ejecutar(conn, "DELETE FROM palabras_respuesta WHERE respuesta_id = %s", (respuesta_id,))
+    for p in limpias:
+        ejecutar(conn, "INSERT IGNORE INTO palabras_respuesta (respuesta_id, palabra) VALUES (%s, %s)", (respuesta_id, p))
+    return limpias
+
+
+def _guardar_relacionadas(conn, respuesta_id: int, relacionadas: list[int]) -> None:
+    validas = {f["id"] for f in consultar(conn, "SELECT id FROM respuestas_automaticas")}
+    ejecutar(conn, "DELETE FROM respuestas_relacionadas WHERE respuesta_id = %s", (respuesta_id,))
+    for rid in dict.fromkeys(relacionadas):  # sin repetidas, en orden
+        if rid in validas and rid != respuesta_id:
+            ejecutar(conn, "INSERT INTO respuestas_relacionadas (respuesta_id, relacionada_id) VALUES (%s, %s)",
+                     (respuesta_id, rid))
+
+
+@router_empleado.get("/respuestas", summary="Lo que sabe responder el asistente (admin)")
+def respuestas_automaticas(u: UsuarioActual = Depends(solo_admin), conn=Depends(obtener_conexion)):
+    return _respuestas_con_palabras(conn)
+
+
+@router_empleado.post("/respuestas", status_code=201, summary="Ensenarle una respuesta nueva al asistente (admin)")
+def crear_respuesta(datos: NuevaRespuestaAutomatica, request: Request,
+                    u: UsuarioActual = Depends(solo_admin), conn=Depends(obtener_conexion)):
+    with transaccion(conn):
+        cur = ejecutar(conn, "INSERT INTO respuestas_automaticas (titulo, pregunta, respuesta, accion, prioridad) "
+                             "VALUES (%s, %s, %s, %s, %s)",
+                       (datos.titulo, datos.pregunta, datos.respuesta, datos.accion, datos.prioridad))
+        rid = cur.lastrowid
+        _guardar_palabras(conn, rid, datos.palabras)
+        _guardar_relacionadas(conn, rid, datos.relacionadas)
+    auditoria.registrar(conn, "RESPUESTA_AUTOMATICA_CREADA", "respuestas_automaticas", rid, usuario_id=u.id,
+                        detalle={"titulo": datos.titulo}, ip=ip_cliente(request))
+    return _respuestas_con_palabras(conn, "WHERE id = %s", (rid,))[0]
+
+
+@router_empleado.patch("/respuestas/{respuesta_id}", summary="Editar o desactivar una respuesta (admin)")
+def editar_respuesta(respuesta_id: int, datos: CambioRespuestaAutomatica, request: Request,
+                     u: UsuarioActual = Depends(solo_admin), conn=Depends(obtener_conexion)):
+    if not consultar_uno(conn, "SELECT id FROM respuestas_automaticas WHERE id = %s", (respuesta_id,)):
+        raise ErrorNegocio(404, "Respuesta no encontrada")
+    cambios = datos.model_dump(exclude_none=True)
+    palabras = cambios.pop("palabras", None)
+    relacionadas = cambios.pop("relacionadas", None)
+    if cambios.get("accion") == "ninguna":
+        cambios["accion"] = None
+    if cambios.get("pregunta") == "":
+        cambios["pregunta"] = None
+    with transaccion(conn):
+        # Las columnas salen de un modelo fijo (titulo, pregunta, respuesta, accion, prioridad, activa)
+        for columna, valor in cambios.items():
+            ejecutar(conn, f"UPDATE respuestas_automaticas SET {columna} = %s WHERE id = %s", (valor, respuesta_id))
+        if palabras is not None:
+            _guardar_palabras(conn, respuesta_id, palabras)
+        if relacionadas is not None:
+            _guardar_relacionadas(conn, respuesta_id, relacionadas)
+    campos = list(cambios) + (["palabras"] if palabras is not None else []) + \
+        (["relacionadas"] if relacionadas is not None else [])
+    auditoria.registrar(conn, "RESPUESTA_AUTOMATICA_EDITADA", "respuestas_automaticas", respuesta_id, usuario_id=u.id,
+                        detalle={"campos": campos}, ip=ip_cliente(request))
+    return _respuestas_con_palabras(conn, "WHERE id = %s", (respuesta_id,))[0]
+
+
+@router_empleado.get("/respuestas/probar", summary="Que responderia el asistente a un texto (admin)")
+def probar_asistente(texto: str = Query(min_length=1, max_length=1000),
+                     u: UsuarioActual = Depends(solo_admin), conn=Depends(obtener_conexion)):
+    if asistente.pide_persona(texto):
+        return {"resultado": "derivar", "respuesta": asistente.PIDE_PERSONA, "coincidencias": []}
+    r = asistente.buscar_respuesta(conn, texto)
+    if not r:
+        return {"resultado": "no_entiende", "respuesta": asistente.NO_ENTENDI, "coincidencias": [],
+                "sugeridas": asistente.sugerir_palabras(texto)}
+    return {"resultado": "responde", "titulo": r["titulo"], "respuesta": asistente.plantilla(conn, r["respuesta"]),
+            "accion": r["accion"], "coincidencias": r["coincidencias"], "puntos": r["puntos"],
+            # Lo que el asistente "entendio" despues de normalizar, sinonimos y raices
+            "como_lo_lee": " ".join(asistente._raices(texto, asistente._sinonimos(conn)))}
+
+
+# ------------------------------------------------------ aprender de lo que falla
+@router_empleado.get("/asistente/pendientes", summary="Preguntas que el asistente no entendio (admin)")
+def pendientes(u: UsuarioActual = Depends(solo_admin), conn=Depends(obtener_conexion)):
+    filas = consultar(conn, "SELECT id, tiquete_id, texto, resultado, creada_en FROM consultas_asistente "
+                            "WHERE resultado IN ('no_entendio', 'derivo') AND NOT revisada "
+                            "ORDER BY creada_en DESC LIMIT 100")
+    for f in filas:
+        f["sugeridas"] = asistente.sugerir_palabras(f["texto"])
+    return filas
+
+
+@router_empleado.get("/asistente/resumen", summary="Como le va al asistente (admin)")
+def resumen_asistente(u: UsuarioActual = Depends(solo_admin), conn=Depends(obtener_conexion)):
+    fila = consultar_uno(
+        conn,
+        "SELECT CAST(SUM(resultado = 'respondio') AS UNSIGNED) AS respondio, "
+        "CAST(SUM(resultado = 'no_entendio') AS UNSIGNED) AS no_entendio, "
+        "CAST(SUM(resultado = 'derivo') AS UNSIGNED) AS derivo, "
+        "CAST(SUM(resultado <> 'respondio' AND NOT revisada) AS UNSIGNED) AS por_revisar "
+        "FROM consultas_asistente WHERE creada_en > NOW() - INTERVAL 30 DAY")
+    votos = consultar_uno(conn, "SELECT CAST(IFNULL(SUM(util_si), 0) AS UNSIGNED) AS si, "
+                                "CAST(IFNULL(SUM(util_no), 0) AS UNSIGNED) AS no FROM respuestas_automaticas")
+    return {k: int(v or 0) for k, v in fila.items()} | {"util_si": int(votos["si"]), "util_no": int(votos["no"])}
+
+
+@router_empleado.post("/asistente/pendientes/{consulta_id}/ensenar",
+                      summary="Ensenarle al asistente: convertir la pregunta en palabras clave de una respuesta")
+def ensenar(consulta_id: int, datos: Ensenanza, request: Request,
+            u: UsuarioActual = Depends(solo_admin), conn=Depends(obtener_conexion)):
+    c = consultar_uno(conn, "SELECT id, texto FROM consultas_asistente WHERE id = %s", (consulta_id,))
+    if not c:
+        raise ErrorNegocio(404, "Consulta no encontrada")
+    if not consultar_uno(conn, "SELECT id FROM respuestas_automaticas WHERE id = %s", (datos.respuesta_id,)):
+        raise ErrorNegocio(404, "Respuesta no encontrada")
+    with transaccion(conn):
+        agregadas = _guardar_palabras(conn, datos.respuesta_id, datos.palabras, reemplazar=False)
+        ejecutar(conn, "UPDATE consultas_asistente SET revisada = TRUE WHERE id = %s", (c["id"],))
+    auditoria.registrar(conn, "ASISTENTE_APRENDIO", "respuestas_automaticas", datos.respuesta_id, usuario_id=u.id,
+                        detalle={"consulta": c["id"], "palabras": agregadas}, ip=ip_cliente(request))
+    return {"agregadas": agregadas}
+
+
+@router_empleado.post("/asistente/pendientes/{consulta_id}/descartar", summary="Marcar una pregunta como revisada")
+def descartar(consulta_id: int, u: UsuarioActual = Depends(solo_admin), conn=Depends(obtener_conexion)):
+    cur = ejecutar(conn, "UPDATE consultas_asistente SET revisada = TRUE WHERE id = %s", (consulta_id,))
+    if cur.rowcount == 0 and not consultar_uno(conn, "SELECT id FROM consultas_asistente WHERE id = %s", (consulta_id,)):
+        raise ErrorNegocio(404, "Consulta no encontrada")
+    return {"id": consulta_id, "revisada": True}
+
+
+# --------------------------------------------------------------- sinonimos
+@router_empleado.get("/asistente/sinonimos", summary="Palabras que significan lo mismo (admin)")
+def sinonimos(u: UsuarioActual = Depends(solo_admin), conn=Depends(obtener_conexion)):
+    return consultar(conn, "SELECT palabra, equivale FROM sinonimos ORDER BY equivale, palabra")
+
+
+@router_empleado.post("/asistente/sinonimos", status_code=201, summary="Agregar un sinonimo (admin)")
+def agregar_sinonimo(datos: NuevoSinonimo, request: Request,
+                     u: UsuarioActual = Depends(solo_admin), conn=Depends(obtener_conexion)):
+    palabra, equivale = asistente.normalizar(datos.palabra), asistente.normalizar(datos.equivale)
+    if not palabra or not equivale or palabra == equivale:
+        raise ErrorNegocio(400, "Escribe dos palabras distintas")
+    if " " in palabra:
+        raise ErrorNegocio(400, "El sinonimo debe ser una sola palabra")
+    if consultar_uno(conn, "SELECT palabra FROM sinonimos WHERE palabra = %s", (palabra,)):
+        raise ErrorNegocio(409, f"'{palabra}' ya tiene un sinonimo")
+    ejecutar(conn, "INSERT INTO sinonimos (palabra, equivale) VALUES (%s, %s)", (palabra, equivale))
+    auditoria.registrar(conn, "SINONIMO_AGREGADO", "sinonimos", None, usuario_id=u.id,
+                        detalle={"palabra": palabra, "equivale": equivale}, ip=ip_cliente(request))
+    return {"palabra": palabra, "equivale": equivale}
+
+
+@router_empleado.delete("/asistente/sinonimos/{palabra}", summary="Quitar un sinonimo (admin)")
+def quitar_sinonimo(palabra: str, request: Request,
+                    u: UsuarioActual = Depends(solo_admin), conn=Depends(obtener_conexion)):
+    cur = ejecutar(conn, "DELETE FROM sinonimos WHERE palabra = %s", (asistente.normalizar(palabra),))
+    if cur.rowcount == 0:
+        raise ErrorNegocio(404, "Ese sinonimo no existe")
+    auditoria.registrar(conn, "SINONIMO_QUITADO", "sinonimos", None, usuario_id=u.id,
+                        detalle={"palabra": palabra}, ip=ip_cliente(request))
+    return {"palabra": palabra, "quitado": True}

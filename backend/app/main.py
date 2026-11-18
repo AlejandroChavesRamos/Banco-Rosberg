@@ -11,7 +11,7 @@ from .config import settings
 from .db.mysql import conectar
 from .errores import ErrorNegocio
 from .rutas import admin, analista, auth, ayuda, cajero, cliente, publico, seguridad, tablero
-from .servicios import grafo
+from .servicios import asistente, grafo
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s: %(message)s")
 log = logging.getLogger("banco")
@@ -23,6 +23,15 @@ async def ciclo_de_vida(app: FastAPI):
         grafo.inicializar()
     except Exception:
         log.exception("Neo4j no disponible al iniciar")
+    # Conocimiento inicial del asistente (solo agrega lo que falte)
+    try:
+        conn = conectar()
+        try:
+            asistente.sembrar_conocimiento(conn)
+        finally:
+            conn.close()
+    except Exception:
+        log.exception("No se pudo cargar el conocimiento del asistente (se intentara en el proximo arranque)")
     yield
     grafo.cerrar()
 

@@ -149,7 +149,9 @@ function Conversacion({ id, onCambio, onVolver }) {
         <div className="min-w-0 flex-1">
           <div className="truncate font-semibold text-marca-900">{tiquete?.asunto ?? 'Cargando…'}</div>
           <div className="text-xs text-slate-500">
-            {tiquete && (tiquete.asesor ? `Te atiende ${tiquete.asesor}` : 'Esperando a que un asesor tome tu caso')}
+            {tiquete && (tiquete.asistente_activo
+              ? 'Te atiende el Asistente Rosberg · escribe “asesor” para hablar con una persona'
+              : tiquete.asesor ? `Te atiende ${tiquete.asesor}` : 'Esperando a que un asesor tome tu caso')}
             {tiquete && ` · ${TEMAS[tiquete.tema]}`}
           </div>
         </div>
@@ -159,7 +161,8 @@ function Conversacion({ id, onCambio, onVolver }) {
         )}
       </header>
 
-      <Mensajes mensajes={mensajes} cargando={!tiquete} />
+      <Mensajes mensajes={mensajes} cargando={!tiquete}
+                onOpcion={tiquete?.asistente_activo && !cerrado ? enviar : undefined} />
 
       {cerrando && tiquete && !cerrado && (
         <CerrarConCalificacion id={id} onListo={(t) => { setTiquete(t); setCerrando(false); onCambio() }}

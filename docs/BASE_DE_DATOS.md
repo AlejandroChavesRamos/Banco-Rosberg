@@ -31,7 +31,7 @@ Hay tres esquemas:
 
 | Esquema | Motor | Contenido |
 |---|---|---|
-| `banco` | MySQL | Los datos del banco (17 tablas, 2 vistas, 3 funciones, 6 procedimientos, 5 triggers) |
+| `banco` | MySQL | Los datos del banco (22 tablas, 2 vistas, 3 funciones, 6 procedimientos, 5 triggers) |
 | `banco_sim` | MySQL | La "hoja de respuestas" del simulador (5 tablas). Un banco real no tendría esto; por eso está aparte |
 | `neo4j` | Neo4j | El grafo de relaciones |
 
@@ -65,6 +65,11 @@ erDiagram
     USUARIOS ||--o{ MENSAJES_TIQUETE : "escribe"
     SOLICITUDES_PUBLICAS ||--o{ RESPUESTAS_SOLICITUD : "recibe"
     USUARIOS ||--o{ RESPUESTAS_SOLICITUD : "responde (empleado)"
+    RESPUESTAS_AUTOMATICAS ||--|{ PALABRAS_RESPUESTA : "se activa con"
+    RESPUESTAS_AUTOMATICAS ||--o{ RESPUESTAS_RELACIONADAS : "sugiere"
+    RESPUESTAS_AUTOMATICAS |o--o{ CONSULTAS_ASISTENTE : "se uso en"
+    TIQUETES ||--o{ CONSULTAS_ASISTENTE : "registra"
+    RESPUESTAS_AUTOMATICAS |o--o{ TIQUETES : "ultimo tema"
 
     USUARIOS {
         bigint id PK
@@ -226,12 +231,16 @@ erDiagram
         tinyint calificacion "1 a 5"
         bigint visto_cliente_id
         bigint visto_asesor_id
+        boolean asistente_activo
+        tinyint asistente_fallos
+        datetime asistente_desde
         datetime actualizado_en
     }
     MENSAJES_TIQUETE {
         bigint id PK
         bigint tiquete_id FK
-        bigint autor_id FK
+        bigint autor_id FK "NULL si es del asistente"
+        boolean automatico
         varchar texto
         datetime creado_en
     }
@@ -242,6 +251,39 @@ erDiagram
         varchar texto
         enum estado_envio "pendiente enviado fallido"
         datetime enviado_en
+    }
+    RESPUESTAS_AUTOMATICAS {
+        bigint id PK
+        varchar clave UK
+        varchar titulo
+        varchar pregunta "texto del boton"
+        varchar respuesta "admite {CLAVES} de configuracion"
+        enum accion "datos del cliente a mostrar"
+        tinyint prioridad "1 a 10"
+        boolean activa
+        int usos
+        int util_si
+        int util_no
+    }
+    PALABRAS_RESPUESTA {
+        bigint respuesta_id PK, FK
+        varchar palabra PK "minusculas, sin tildes"
+    }
+    RESPUESTAS_RELACIONADAS {
+        bigint respuesta_id PK, FK
+        bigint relacionada_id PK, FK
+    }
+    SINONIMOS {
+        varchar palabra PK
+        varchar equivale
+    }
+    CONSULTAS_ASISTENTE {
+        bigint id PK
+        bigint tiquete_id FK
+        varchar texto
+        enum resultado "respondio no_entendio derivo"
+        bigint respuesta_id FK
+        boolean revisada
     }
 ```
 
@@ -472,6 +514,10 @@ Una conversación de ayuda entre un **cliente** y un **asesor** (cualquier emple
 | `visto_cliente_id` / `visto_asesor_id` | BIGINT UNSIGNED | | Último mensaje que cada lado ya vio. Así se cuentan los “sin leer” sin una tabla extra |
 | `creado_en` / `actualizado_en` | DATETIME(6) | | `actualizado_en` = último mensaje (ordena la bandeja) |
 | `cerrado_en` / `cerrado_por` | DATETIME(6) / FK → usuarios | NULL | |
+| `asistente_activo` | BOOLEAN | | El Asistente Rosberg responde en este tiquete |
+| `asistente_fallos` | TINYINT UNSIGNED | | Veces seguidas que no entendió; a la segunda pasa el caso a un asesor |
+| `asistente_desde` | DATETIME(6) | NULL | Cuándo se activó por primera vez. Si ya se usó, la activación automática no lo vuelve a tomar |
+| `asistente_ultima_respuesta` | FK → respuestas_automaticas, NULL | | De qué se venía hablando (contexto): sus temas relacionados ganan prioridad |
 
 Índices: `(cliente_id, actualizado_en)` para la lista del cliente, `(estado, actualizado_en)` para la cola de empleados y `(asesor_id, estado)` para “Mis tiquetes”.
 
@@ -482,8 +528,10 @@ Los mensajes de cada conversación. **Solo se insertan**: la app no tiene permis
 |---|---|---|
 | `id` | BIGINT UNSIGNED PK | También sirve de “cursor”: las pantallas piden `?despues_de=<último id>` y reciben solo lo nuevo |
 | `tiquete_id` | FK → tiquetes | |
-| `autor_id` | FK → usuarios | El cliente o el asesor |
+| `autor_id` | FK → usuarios, NULL | El cliente o el asesor; NULL si lo escribió el asistente |
+| `automatico` | BOOLEAN | TRUE = mensaje del Asistente Rosberg. `CHECK`: o es automático y sin autor, o es de una persona con autor |
 | `texto` | VARCHAR(1000) | |
+| `opciones` | JSON, NULL | Botones de respuesta rápida que propone el asistente: `["Sí, me sirvió", "¿Cómo retiro sin tarjeta?"]` |
 | `creado_en` | DATETIME(6) | |
 
 Índice `(autor_id, creado_en)`: permite limitar a 20 mensajes por minuto por persona.
@@ -500,6 +548,62 @@ Lo que un empleado responde a una solicitud pública. El visitante no tiene cuen
 | `estado_envio` | ENUM | `pendiente` → `enviado` o `fallido` |
 | `error_envio` | VARCHAR(255) NULL | Por qué falló (servidor de correo caído…) |
 | `creado_en` / `enviado_en` | DATETIME(6) | |
+
+### `respuestas_automaticas`
+Lo que sabe contestar el Asistente Rosberg (`init/09_asistente.sh`). El admin las crea, edita y **desactiva** desde la Intranet; nunca se borran.
+
+| Columna | Tipo | Descripción |
+|---|---|---|
+| `id` | BIGINT UNSIGNED PK | |
+| `clave` | VARCHAR(40) UNIQUE, NULL | Identifica las respuestas que trae el banco (`retiro`, `no_llego`…), para cargar solo las que falten. Las del admin no la necesitan |
+| `titulo` | VARCHAR(80) | Para reconocerla en la Intranet |
+| `pregunta` | VARCHAR(120) NULL | Cómo aparece en un botón de sugerencia: “¿Cómo retiro sin tarjeta?”. Pulsarlo elige esta respuesta directamente |
+| `respuesta` | VARCHAR(1000) | El texto que ve el cliente. Admite claves de `configuracion` entre llaves: `{RETIRO_MAXIMO}` se cambia por “$2.000.000”, así el texto sigue correcto si el admin cambia el límite |
+| `accion` | ENUM NULL | Además del texto, consultar **datos del cliente**: `envios`, `cuentas`, `saldo`, `codigos_retiro`, `llaves`, `seguridad`. Lista cerrada: cada valor es una consulta fija del backend, de solo lectura |
+| `prioridad` | TINYINT UNSIGNED (`CHECK 1..10`) | Si coinciden varias, gana la de mayor prioridad (el saludo tiene 1: solo gana si no hay nada más) |
+| `activa` | BOOLEAN | |
+| `usos` | INT UNSIGNED | Cuántas veces se ha usado |
+| `util_si` / `util_no` | INT UNSIGNED | Votos de los clientes con los botones “Sí / No me sirvió” |
+| `creada_en` / `actualizada_en` | DATETIME(6) | |
+
+### `palabras_respuesta`
+Las palabras clave de cada respuesta, **una fila por palabra** (primera forma normal: nada de listas separadas por comas dentro de una celda). Se guardan en minúsculas y sin tildes, igual que se normaliza el texto del cliente antes de comparar.
+
+| Columna | Tipo | Descripción |
+|---|---|---|
+| `respuesta_id` | PK, FK → respuestas_automaticas | |
+| `palabra` | VARCHAR(40) PK | Palabra o frase corta: `llave`, `no me llego` |
+
+### `respuestas_relacionadas`
+Relación **muchos a muchos de la tabla consigo misma**: qué temas se sugieren después de una respuesta (como botones) y cuáles ganan prioridad por contexto. `CHECK` impide que una respuesta se relacione consigo misma.
+
+| Columna | Tipo |
+|---|---|
+| `respuesta_id` | PK, FK → respuestas_automaticas |
+| `relacionada_id` | PK, FK → respuestas_automaticas |
+
+### `sinonimos`
+Palabras que significan lo mismo. Antes de comparar, cada palabra del cliente y de las palabras clave se cambia por su equivalente: “clave” → “contrasena”, “plata” → “dinero”.
+
+| Columna | Tipo | Descripción |
+|---|---|---|
+| `palabra` | VARCHAR(40) PK | Lo que escribe el cliente (una sola palabra, sin tildes) |
+| `equivale` | VARCHAR(40) | Cómo se entiende. `CHECK palabra <> equivale` |
+
+### `consultas_asistente`
+Cada pregunta que recibió el asistente y qué hizo con ella. De aquí **aprende**: el admin ve las que no entendió y con un clic las convierte en palabras clave de una respuesta.
+
+| Columna | Tipo | Descripción |
+|---|---|---|
+| `id` | BIGINT UNSIGNED PK | |
+| `tiquete_id` | FK → tiquetes | |
+| `texto` | VARCHAR(1000) | Lo que escribió el cliente |
+| `resultado` | ENUM | `respondio`, `no_entendio` o `derivo` (pasó a un asesor) |
+| `respuesta_id` | FK → respuestas_automaticas, NULL | La que usó, si respondió |
+| `revisada` | BOOLEAN | El admin ya la atendió (lo único que la app puede cambiar) |
+| `creada_en` | DATETIME(6) | Índice `(resultado, revisada, creada_en)` para la bandeja “Lo que no entendió” |
+
+El **conocimiento inicial** (32 respuestas, sus palabras, temas relacionados y sinónimos) no está en un `.sql`: lo carga el backend al arrancar desde `app/servicios/conocimiento.py`, una vez por versión (`configuracion.CONOCIMIENTO_VERSION`). Solo agrega lo que falta: nunca pisa lo que el admin editó ni revive lo que borró.
 
 ### Vistas
 
@@ -552,7 +656,7 @@ Cada componente se conecta con su propio usuario y el **mínimo privilegio** que
 | Usuario | Lo usa | Puede | No puede |
 |---|---|---|---|
 | `root` | Solo administración (Workbench) | Todo | — |
-| `banco_app` | El backend (API) | Leer; insertar usuarios, cuentas, llaves, alertas…; actualizar **solo algunas columnas** (por ejemplo, el `estado` de una cuenta y las columnas de seguridad de `usuarios`); ejecutar los 5 procedimientos de la app y las 3 funciones; crear solicitudes públicas y marcarlas como atendidas; crear tiquetes y mensajes, y cambiar solo el estado, el asesor, la calificación y los “vistos” de un tiquete | Cambiar `saldo` directamente, editar o borrar una solicitud, editar o borrar un mensaje o una respuesta ya enviada, cambiar de quién es un tiquete, cambiar el `rol` de un usuario, borrar cualquier fila, insertar transacciones sin procedimiento, ejecutar `sp_cargar_historico`, leer `banco_sim` |
+| `banco_app` | El backend (API) | Leer; insertar usuarios, cuentas, llaves, alertas…; actualizar **solo algunas columnas** (por ejemplo, el `estado` de una cuenta y las columnas de seguridad de `usuarios`); ejecutar los 5 procedimientos de la app y las 3 funciones; crear solicitudes públicas y marcarlas como atendidas; crear tiquetes y mensajes, y cambiar solo el estado, el asesor, la calificación y los “vistos” de un tiquete | Cambiar `saldo` directamente, editar o borrar una solicitud, editar o borrar un mensaje o una respuesta ya enviada, cambiar de quién es un tiquete, borrar una respuesta automática (solo desactivarla), borrar o editar el registro de preguntas del asistente (solo marcarlas revisadas), cambiar el `rol` de un usuario, borrar cualquier fila, insertar transacciones sin procedimiento, ejecutar `sp_cargar_historico`, leer `banco_sim` |
 | `banco_reportes` | Analistas en Workbench (solo lectura) | Leer vistas, transacciones, alertas, reglas, auditoría, solicitudes públicas y las columnas de medición de `tiquetes` (estado, tema, calificación, fechas) | Leer las conversaciones (`mensajes_tiquete`), ver la tabla `usuarios` (datos personales y hashes), modificar nada |
 | `banco_simulador` | El simulador | Leer el banco; crear clientes y cuentas con fechas pasadas; ejecutar `sp_cargar_historico`; todo en `banco_sim` | Cambiar saldos, borrar, fechar movimientos en el futuro |
 
@@ -693,6 +797,18 @@ Las conversaciones se guardan como **una fila por mensaje** (no un texto que cre
 Para que dos empleados no tomen el mismo tiquete, *Atender* es un solo `UPDATE … SET asesor_id = ? WHERE id = ? AND estado = 'nuevo'`: si dos lo pulsan a la vez, MySQL solo cambia la fila para el primero y el segundo recibe 0 filas afectadas (409).
 
 Las respuestas por correo se **guardan antes de enviarse**. Si el servidor de correo está caído, la respuesta queda como `fallido` y se reintenta: el banco no pierde lo que escribió el empleado ni deja de funcionar por culpa del correo.
+
+### Asistente: palabras clave en su propia tabla y evaluación “perezosa”
+Las palabras clave están en `palabras_respuesta`, una por fila, y no como `"llave, llaves, registrar"` dentro de una columna: así se respetan la primera forma normal, la llave primaria impide repetir una palabra en la misma respuesta y se puede buscar qué respuesta usa una palabra (`idx_palabra`).
+
+La activación automática (“si nadie atiende en 5 minutos”) no necesita un proceso aparte revisando el reloj: se comprueba cuando el cliente consulta sus conversaciones, que es justo cuando hay alguien esperando la respuesta. El `UPDATE … WHERE asistente_desde IS NULL` garantiza que se active una sola vez aunque lleguen dos consultas al mismo tiempo.
+
+Los mensajes del asistente no tienen autor (`autor_id` NULL) en vez de inventar un “usuario robot”: no es una persona, no tiene contraseña ni rol, y el `CHECK ck_msj_autor` impide mezclar los dos casos.
+
+### Asistente: entender sin inteligencia artificial
+El texto del cliente pasa por cuatro pasos antes de compararse: **normalizar** (minúsculas, sin tildes ni signos), **sinónimos** (tabla `sinonimos`), **raíces** (quitar terminaciones: “retiro”, “retirar” y “retiré” se leen “retir”) y **tolerancia a errores** (distancia de edición: dos raíces de 6 letras o más que difieren en una letra son iguales; “trasferencia” = “transferencia”; las palabras cortas deben ser exactas para que “cuesta” no se confunda con “cuenta”). Una palabra clave de varias palabras coincide aunque haya alguna palabra en medio (“no me **ha** llegado”).
+
+Los **datos del cliente** salen de una lista cerrada de consultas (`accion` es un ENUM, no SQL escrito por el admin): el admin decide *qué* mostrar, nunca *cómo* consultarlo. Siempre se consultan los del dueño del tiquete, con números y nombres enmascarados, y el asistente no puede modificar nada.
 
 ### Formularios públicos sin abrir la puerta al abuso
 `solicitudes_publicas` es la única tabla en la que se puede escribir **sin iniciar sesión**. Por eso guarda la IP y la API rechaza (429) la sexta solicitud de una misma IP en una hora; el usuario de la app solo puede insertar y marcar `atendida`, nunca editar ni borrar lo que dejó el visitante.

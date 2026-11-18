@@ -246,3 +246,64 @@ class RespuestaSolicitud(BaseModel):
     @classmethod
     def _limpio(cls, v):
         return _texto_limpio(v)
+
+
+# ------------------------------ Asistente ------------------------------
+class AsistenteEstado(BaseModel):
+    activo: bool
+
+
+PalabrasClave = Annotated[list[Annotated[str, Field(min_length=2, max_length=40)]],
+                          Field(min_length=1, max_length=20,
+                                description="Palabras o frases cortas que activan la respuesta")]
+
+
+AccionAsistente = Literal["envios", "cuentas", "saldo", "codigos_retiro", "llaves", "seguridad"]
+
+
+class NuevaRespuestaAutomatica(BaseModel):
+    titulo: str = Field(min_length=3, max_length=80)
+    pregunta: str | None = Field(default=None, max_length=120,
+                                 description="Como aparece en un boton de sugerencia")
+    respuesta: str = Field(min_length=5, max_length=1000)
+    accion: AccionAsistente | None = Field(default=None, description="Ademas, mostrar estos datos del cliente")
+    palabras: PalabrasClave
+    relacionadas: list[int] = Field(default_factory=list, max_length=6)
+    prioridad: int = Field(default=5, ge=1, le=10)
+
+    @field_validator("titulo", "respuesta")
+    @classmethod
+    def _limpio(cls, v):
+        return _texto_limpio(v)
+
+    @field_validator("pregunta")
+    @classmethod
+    def _pregunta(cls, v):
+        return _texto_limpio(v, obligatorio=False)
+
+
+class CambioRespuestaAutomatica(BaseModel):
+    """Solo se cambia lo que se envia. pregunta = "" o accion = "ninguna" las quitan."""
+    titulo: str | None = Field(default=None, min_length=3, max_length=80)
+    pregunta: str | None = Field(default=None, max_length=120)
+    respuesta: str | None = Field(default=None, min_length=5, max_length=1000)
+    accion: AccionAsistente | Literal["ninguna"] | None = None
+    palabras: PalabrasClave | None = None
+    relacionadas: list[int] | None = Field(default=None, max_length=6)
+    prioridad: int | None = Field(default=None, ge=1, le=10)
+    activa: bool | None = None
+
+    @field_validator("titulo", "respuesta", "pregunta")
+    @classmethod
+    def _limpio(cls, v):
+        return _texto_limpio(v, obligatorio=False) if v is not None else None
+
+
+class Ensenanza(BaseModel):
+    respuesta_id: int
+    palabras: PalabrasClave
+
+
+class NuevoSinonimo(BaseModel):
+    palabra: str = Field(min_length=2, max_length=40)
+    equivale: str = Field(min_length=2, max_length=40)

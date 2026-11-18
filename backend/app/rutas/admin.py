@@ -108,6 +108,8 @@ _CONFIG_EDITABLE = {
     "2FA_CLIENTES": "interruptor",
     "2FA_TRANSFERENCIAS": "interruptor",
     "MONTO_2FA": "numero",
+    "ASISTENTE_AUTOMATICO": "interruptor",
+    "MINUTOS_ASISTENTE": "minutos",
 }
 
 
@@ -121,6 +123,8 @@ def cambiar_configuracion(clave: str, datos: CambioConfiguracion, request: Reque
         raise ErrorNegocio(400, "Un interruptor solo puede valer 0 (apagado) o 1 (encendido)")
     if tipo == "numero" and (not datos.valor.isdigit() or int(datos.valor) < 1000):
         raise ErrorNegocio(400, "Debe ser un monto entero de al menos 1000")
+    if tipo == "minutos" and (not datos.valor.isdigit() or not 1 <= int(datos.valor) <= 120):
+        raise ErrorNegocio(400, "Deben ser entre 1 y 120 minutos")
     anterior = consultar_uno(conn, "SELECT valor FROM configuracion WHERE clave = %s", (clave,))
     ejecutar(conn, "UPDATE configuracion SET valor = %s WHERE clave = %s", (datos.valor, clave))
     auditoria.registrar(conn, "CAMBIAR_CONFIGURACION", "configuracion", None, usuario_id=u.id,

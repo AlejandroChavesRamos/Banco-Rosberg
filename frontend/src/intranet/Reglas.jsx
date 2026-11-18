@@ -43,7 +43,7 @@ export default function Reglas() {
       <Tarjeta>
         <h2 className="mb-3 text-lg font-semibold text-marca-700">Umbrales de decisión</h2>
         <div className="grid gap-2 text-sm sm:grid-cols-2">
-          {configuracion.filter((c) => !c.clave.startsWith('2FA') && c.clave !== 'MONTO_2FA').map((c) => (
+          {configuracion.filter((c) => !c.clave.startsWith('2FA') && c.clave !== 'MONTO_2FA' && !c.clave.includes('ASISTENTE')).map((c) => (
             <div key={c.clave} className="flex justify-between gap-4 border-b border-slate-100 py-1.5">
               <span className="text-slate-500">{c.descripcion}</span>
               <span className="cifras font-semibold">{Number(c.valor).toLocaleString('es-CO')}</span>

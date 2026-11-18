@@ -76,7 +76,14 @@ function hora(texto) {
 
 // Burbujas. Cada mensaje: { id, texto, creado_en, mio, autor, estado? }
 // "pie" permite agregar algo debajo de una burbuja (por ejemplo, el estado del correo).
-export function Mensajes({ mensajes, cargando, vacio, pie }) {
+// "onOpcion": si se pasa, los botones de respuesta rapida del ULTIMO mensaje
+// del asistente se pueden pulsar (envian ese texto).
+export function Mensajes({ mensajes, cargando, vacio, pie, onOpcion }) {
+  const [enviando, setEnviando] = useState(null)
+  async function elegir(texto) {
+    setEnviando(texto)
+    try { await onOpcion(texto) } finally { setEnviando(null) }
+  }
   const caja = useRef(null)
   const pegadoAbajo = useRef(true)
 
@@ -102,6 +109,7 @@ export function Mensajes({ mensajes, cargando, vacio, pie }) {
         // El nombre solo se muestra en el primer mensaje de una racha del otro lado
         const anterior = mensajes[i - 1]
         const mostrarAutor = !m.mio && (separador || !anterior || anterior.mio || anterior.autor !== m.autor)
+        const bot = m.de === 'asistente'
         return (
           <div key={m.id}>
             {separador && (
@@ -109,9 +117,16 @@ export function Mensajes({ mensajes, cargando, vacio, pie }) {
             )}
             <div className={`flex ${m.mio ? 'justify-end' : 'justify-start'} ${mostrarAutor ? 'mt-3' : ''}`}>
               <div className="max-w-[80%] sm:max-w-[70%]">
-                {mostrarAutor && <div className="mb-1 ml-3 text-xs font-semibold text-marca-600">{m.autor}</div>}
+                {mostrarAutor && (
+                  <div className="mb-1 ml-3 flex items-center gap-1 text-xs font-semibold text-marca-600">
+                    {bot && <Icono nombre="robot" className="h-3.5 w-3.5" />}
+                    {m.autor}
+                  </div>
+                )}
                 <div className={`whitespace-pre-line break-words rounded-2xl px-4 py-2.5 text-sm shadow-sm ${
-                  m.mio ? 'rounded-br-md bg-marca-700 text-white' : 'rounded-bl-md bg-white text-marca-900 ring-1 ring-marca-100'
+                  m.mio ? 'rounded-br-md bg-marca-700 text-white'
+                    : bot ? 'rounded-bl-md bg-oro-claro/40 text-marca-900 ring-1 ring-oro/40'
+                      : 'rounded-bl-md bg-white text-marca-900 ring-1 ring-marca-100'
                 }`}>
                   {m.texto}
                   <div className={`mt-1 text-right text-[11px] ${m.mio ? 'text-white/70' : 'text-slate-400'}`}>
@@ -119,6 +134,20 @@ export function Mensajes({ mensajes, cargando, vacio, pie }) {
                   </div>
                 </div>
                 {pie?.(m)}
+                {onOpcion && bot && i === mensajes.length - 1 && m.opciones?.length > 0 && (
+                  <div className="mt-2 flex flex-wrap gap-2" role="group" aria-label="Respuestas rápidas">
+                    {m.opciones.map((o) => (
+                      <button key={o} type="button" disabled={Boolean(enviando)} onClick={() => elegir(o)}
+                              className={`rounded-full px-3.5 py-1.5 text-sm font-medium ring-1 transition-colors disabled:opacity-50 ${
+                                o === 'Hablar con un asesor'
+                                  ? 'bg-white text-marca-600 ring-marca-200 hover:bg-marca-50'
+                                  : 'bg-marca-700 text-white ring-marca-700 hover:bg-marca-800'
+                              }`}>
+                        {enviando === o ? '…' : o}
+                      </button>
+                    ))}
+                  </div>
+                )}
               </div>
             </div>
           </div>

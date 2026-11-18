@@ -39,6 +39,7 @@ const TRAZOS = {
   soporte: <><path d="M4 13v-1a8 8 0 0 1 16 0v1" /><rect x="3" y="13" width="4" height="6" rx="1.500" /><rect x="17" y="13" width="4" height="6" rx="1.500" /><path d="M19 19c0 1.500-1.500 2.500-4 2.500h-2" /></>,
   estrella: <path d="m12 3.500 2.600 5.400 5.900.800-4.300 4.100 1 5.800L12 16.800l-5.200 2.800 1-5.800-4.300-4.100 5.900-.800L12 3.500z" />,
   cerrar: <path d="M6 6l12 12M18 6 6 18" />,
+  robot: <><rect x="4.500" y="8" width="15" height="11" rx="3" /><path d="M12 4.500V8M9.500 13v.01M14.500 13v.01M9.500 16.200h5" /><circle cx="12" cy="3.800" r="1" /></>,
 }
 
 export default function Icono({ nombre, className = 'h-5 w-5' }) {

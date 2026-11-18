@@ -14,6 +14,7 @@ import { Aviso, Boton, Campo, Logo, PantallaCargando, Volver } from '../componen
 import fotoIntranet from '../imagenes/intranet.jpg'
 import { useSesion } from '../sesion'
 import Alertas from './Alertas'
+import Asistente from './Asistente'
 import Atencion from './Atencion'
 import Auditoria from './Auditoria'
 import Empleados from './Empleados'
@@ -31,6 +32,7 @@ const MENU = [
   { a: '/intranet/ventanilla', texto: 'Ventanilla', icono: 'ventanilla', roles: ['cajero', 'admin'] },
   { a: '/intranet/atencion', texto: 'Atención al cliente', icono: 'chat', roles: ['cajero', 'analista', 'admin'], contador: 'atencion' },
   { a: '/intranet/solicitudes', texto: 'Solicitudes', icono: 'buzon', roles: ['cajero', 'analista', 'admin'], contador: 'solicitudes' },
+  { a: '/intranet/asistente', texto: 'Asistente', icono: 'robot', roles: ['admin'] },
   { a: '/intranet/empleados', texto: 'Empleados', icono: 'empleados', roles: ['admin'] },
   { a: '/intranet/reglas', texto: 'Reglas antifraude', icono: 'ajustes', roles: ['admin'] },
   { a: '/intranet/auditoria', texto: 'Auditoría', icono: 'cadena', roles: ['admin'] },
@@ -55,6 +57,7 @@ export default function Intranet() {
         <Route path="auditoria" element={<Auditoria />} />
         <Route path="solicitudes" element={<Solicitudes />} />
         <Route path="atencion" element={<Atencion />} />
+        <Route path="asistente" element={<Asistente />} />
         <Route path="cambiar-clave" element={<div className="max-w-md"><CambiarClave /></div>} />
         <Route
           path="seguridad"

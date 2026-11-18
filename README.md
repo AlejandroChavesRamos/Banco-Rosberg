@@ -184,6 +184,12 @@ Recorrido sugerido:
 7. **App** (sin iniciar sesión): deja tu correo en *Contáctanos*. En la **Intranet → Solicitudes** ábrela y respóndela: la respuesta llega por correo a **http://localhost:8025**.
 8. **App** → *¿Olvidaste tu contraseña?*: el cliente la cambia demostrando su cédula y su celular (el banco no envía correos). En **Perfil** ve sus datos enmascarados.
 9. **App → Ayuda**: abre una conversación con un asesor. En la **Intranet → Atención al cliente** un empleado pulsa *Atender* y le responde; el chat se actualiza solo en las dos pantallas. Al finalizar, el cliente califica la atención (el promedio aparece en el Tablero).
+11. **Intranet** (admin) → **Asistente**: el contestador automático (sin IA externa, todo local).
+    - Entiende errores de escritura (“trasferencia”), sinónimos (“clave” = contraseña) y variantes (“retiré”, “retirar”).
+    - Responde con **los datos reales del cliente** cuando sirve: sus envíos, saldo, cuentas, códigos de retiro, llaves o seguridad (solo lectura, enmascarados).
+    - Muestra **botones** de respuesta rápida (“Sí, me sirvió”, temas relacionados) y recuerda de qué se venía hablando.
+    - En **Lo que no entendió**, el admin le enseña con un clic. También ve qué respuestas le sirven a los clientes, prueba textos y edita respuestas y sinónimos.
+    - Se activa a mano (Atención al cliente → *Activar asistente*) o solo, si nadie atiende un tiquete en X minutos. Se apaga cuando un empleado toma el caso, si no entiende dos veces o si el cliente escribe “asesor”.
 10. **App → Enviar dinero**: escribe un mensaje opcional (“Para el almuerzo”). Quien recibe lo ve en sus movimientos.
 
 ---
@@ -281,6 +287,7 @@ Luego aplica lo que tu base no tenga todavía:
 | Seguridad (2FA, avisos de inicio de sesión) | Error `Unknown column 'totp_ultimo_paso'` o falta la tabla `avisos_login` | Ver abajo ① |
 | Solicitudes públicas (tarjeta, contacto, empleo) | Error `Table 'banco.solicitudes_publicas' doesn't exist` | Ver abajo ② |
 | Mensajería (chat de ayuda, respuestas por correo, mensaje en transferencias) | Error `Table 'banco.tiquetes' doesn't exist` o `Incorrect number of arguments for PROCEDURE banco.sp_transferir` | Ver abajo ③ |
+| Asistente automático | Error `Unknown column 't.asistente_activo'` | Ver abajo ④ |
 
 ① Seguridad (en PowerShell):
 
@@ -301,6 +308,12 @@ docker compose exec mysql bash /docker-entrypoint-initdb.d/07_solicitudes.sh
 Get-Content db/mysql/migraciones/2026-11-17_mensaje_transferencias.sql | docker compose exec -T mysql sh -c 'mysql -uroot -p"$MYSQL_ROOT_PASSWORD" banco'
 docker compose exec mysql bash /docker-entrypoint-initdb.d/03_usuarios.sh
 docker compose exec mysql bash /docker-entrypoint-initdb.d/08_mensajeria.sh
+```
+
+④ Asistente automático (después de ③):
+
+```powershell
+docker compose exec mysql bash /docker-entrypoint-initdb.d/09_asistente.sh
 ```
 
 Después reinicia el backend: `docker compose restart backend`.
